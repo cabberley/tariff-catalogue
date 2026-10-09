@@ -52,6 +52,13 @@ def _state_path(path: str) -> bool:
     return len(parts) == 2 and parts[0] == "state" and parts[1].endswith(".json")
 
 
+def _overwritable_path(path: str) -> bool:
+    parts = _path_parts(path)
+    state_path = len(parts) == 2 and parts[0] == "state" and parts[1].endswith(".json")
+    index_path = len(parts) >= 2 and parts[0] == "index" and parts[-1].endswith(".json")
+    return state_path or index_path
+
+
 def _json_bytes(path: str, obj: Any) -> bytes:
     parts = _path_parts(path)
     if parts[0] == "versions" and not isinstance(
@@ -107,7 +114,7 @@ class LocalArchiveStore:
     def _put(self, path: str, data: bytes) -> None:
         target = self._target(path)
         target.parent.mkdir(parents=True, exist_ok=True)
-        overwrite = _state_path(path)
+        overwrite = _overwritable_path(path)
         if overwrite:
             with tempfile.NamedTemporaryFile(dir=target.parent, delete=False) as temporary:
                 temporary.write(data)
@@ -218,7 +225,7 @@ class S3ArchiveStore:
 
     def _put(self, path: str, data: bytes) -> None:
         _path_parts(path)
-        if _state_path(path):
+        if _overwritable_path(path):
             self.client.put_object(Bucket=self.bucket, Key=path, Body=data)
             return
         try:

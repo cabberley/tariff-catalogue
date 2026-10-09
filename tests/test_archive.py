@@ -37,6 +37,10 @@ def test_json_append_only_and_state_overwrite(store) -> None:
     store.put_json("state/feed.json", {"updated_since": "second"})
     assert store.get_json("state/feed.json") == {"updated_since": "second"}
 
+    store.put_json("index/au_cdr/plans.json", [{"status": "current"}])
+    store.put_json("index/au_cdr/plans.json", [{"status": "withdrawn"}])
+    assert store.get_json("index/au_cdr/plans.json") == [{"status": "withdrawn"}]
+
 
 def test_raw_gzip_metadata_and_listing(store) -> None:
     payload = b'{"plan":"example"}'
