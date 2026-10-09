@@ -3,19 +3,20 @@
 from __future__ import annotations
 
 import csv
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta
 from decimal import Decimal
-from functools import lru_cache
+from functools import cache
 from pathlib import Path
-from typing import Any
 
 from tariff_core import (
+    Bill,
     BillingPeriod,
     Commodity,
     Confidence,
     Contract,
     Conversion,
+    FixedComponent,
     Interval,
     PlanVersion,
     UsageComponent,
@@ -45,13 +46,12 @@ class CheckFinding:
 class _Profile:
     name: str
     commodity: Commodity
-    unit: str
     start: datetime
     end: datetime
     intervals: tuple[Interval, ...]
 
 
-@lru_cache(maxsize=None)
+@cache
 def _load_profile(name: str) -> _Profile:
     path = PROFILE_DIR / f"{name}.csv"
     unit = "m3" if name == "gas_household" else "kWh"
@@ -76,7 +76,6 @@ def _load_profile(name: str) -> _Profile:
     return _Profile(
         name=name,
         commodity=commodity,
-        unit=unit,
         start=intervals[0].end - duration,
         end=intervals[-1].end,
         intervals=tuple(intervals),
@@ -95,7 +94,8 @@ def _profiles(plan: PlanVersion) -> tuple[_Profile, ...]:
     registers = {
         component.register.value
         for component in plan.components
-        if isinstance(component, UsageComponent)
+        if isinstance(component, (FixedComponent, UsageComponent))
+        and component.register is not None
     }
     if "controlled_load_1" in registers:
         profiles.append(_load_profile("controlled_load"))
@@ -122,7 +122,7 @@ def _billing_period(profile: _Profile) -> BillingPeriod:
     return BillingPeriod(profile.start, profile.end, contract)
 
 
-def _bill(plan: PlanVersion, profile: _Profile) -> Any:
+def _bill(plan: PlanVersion, profile: _Profile) -> Bill:
     return bill(plan, profile.intervals, period=_billing_period(profile))
 
 
@@ -199,6 +199,4 @@ def check_version(
 
 def lower_confidence(plan: PlanVersion, findings: list[CheckFinding]) -> PlanVersion:
     """Set confidence for a flagged version without changing its pricing hash."""
-    from dataclasses import replace
-
     return replace(plan, confidence=Confidence.MEDIUM) if findings else plan

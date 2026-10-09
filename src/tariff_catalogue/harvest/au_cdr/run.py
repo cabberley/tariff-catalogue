@@ -11,8 +11,9 @@ from typing import Any
 from urllib.parse import quote
 
 import httpx
-from tariff_core import content_hash, from_cdr, to_dict, validate_plan
+from tariff_core import PlanVersion, content_hash, from_cdr, parse_plan, to_dict, validate_plan
 
+from tariff_catalogue.checks.synthetic import check_version, lower_confidence
 from tariff_catalogue.harvest.au_cdr.brands import Brand, CDRResponseError, discover_brands
 from tariff_catalogue.harvest.au_cdr.detail import fetch_detail
 from tariff_catalogue.harvest.au_cdr.listing import (
@@ -98,6 +99,7 @@ def _index_entry(
     version_hash: str,
     previous: dict[str, Any] | None,
     now: datetime,
+    finding_codes: list[str],
 ) -> dict[str, Any]:
     value = to_dict(plan)
     effective = value.get("effective", {})
@@ -113,10 +115,32 @@ def _index_entry(
         "display_name": plan.display_name,
         "status": "current",
         "partial": plan.partial,
+        "confidence": value.get("confidence"),
         "first_seen": previous.get("first_seen", now.isoformat()) if previous else now.isoformat(),
         "last_seen": now.isoformat(),
         "equivalence_group": _pricing_hash(plan),
+        "finding_codes": finding_codes,
     }
+
+
+def _previous_plan(
+    store: ArchiveStore,
+    plan_id: str,
+    previous: dict[str, Any] | None,
+    report: RunReport,
+) -> PlanVersion | None:
+    version_hash = previous.get("version_hash") if previous else None
+    if not isinstance(version_hash, str):
+        return None
+    version_path = f"versions/{quote(plan_id, safe=':@')}/{version_hash}.json"
+    if not store.exists(version_path):
+        report.record_warning(f"Previous version for plan {plan_id} is missing from the archive.")
+        return None
+    try:
+        return parse_plan(store.get_json(version_path))
+    except Exception as error:
+        report.record_warning(f"Could not load previous version for plan {plan_id}: {error}")
+        return None
 
 
 def _plan_key(plan_id: str) -> str:
@@ -265,6 +289,10 @@ def run_au_cdr(
                     report.record_invalid(brand.brand_id, f"{summary.plan_id}: missing plan_id")
                     continue
 
+                previous = index_by_id.get(plan.plan_id)
+                previous_plan = _previous_plan(store, plan.plan_id, previous, report)
+                findings = check_version(plan, previous_plan)
+                plan = lower_confidence(plan, findings)
                 version_hash = content_hash(plan)
                 version_path = (
                     f"versions/{quote(plan.plan_id, safe=':@')}/{version_hash}.json"
@@ -279,8 +307,17 @@ def run_au_cdr(
                 if not exists and not dry_run:
                     store.put_json(version_path, plan)
 
-                previous = index_by_id.get(plan.plan_id)
-                index_by_id[plan.plan_id] = _index_entry(plan, version_hash, previous, now)
+                finding_data = [finding.to_dict() for finding in findings]
+                report.record_findings(plan.plan_id, finding_data)
+                if finding_data and not dry_run:
+                    checks_path = (
+                        f"checks/{quote(plan.plan_id, safe=':@')}/{version_hash}.json"
+                    )
+                    store.put_json(checks_path, finding_data)
+                finding_codes = sorted({finding.code for finding in findings})
+                index_by_id[plan.plan_id] = _index_entry(
+                    plan, version_hash, previous, now, finding_codes
+                )
 
         if all_current_ids is not None:
             current_keys = {_plan_key(plan_id) for plan_id in all_current_ids}
