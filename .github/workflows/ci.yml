@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: python -m pip install --upgrade pip
+      - run: python -m pip install -e ".[dev]"
+      - run: ruff check .
+      - run: mypy
+      - run: pytest
+
+  schema-drift:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compare schema with tariff-core
+        run: |
+          curl --fail --silent --show-error \
+            https://raw.githubusercontent.com/cabberley/tariff-core/main/docs/schema.md \
+            --output /tmp/tariff-core-schema.md
+          tail -n +2 docs/schema.md > /tmp/catalogue-schema.md
+          tail -n +2 /tmp/tariff-core-schema.md > /tmp/upstream-schema.md
+          diff --unified /tmp/upstream-schema.md /tmp/catalogue-schema.md
