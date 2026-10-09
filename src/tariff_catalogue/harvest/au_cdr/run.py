@@ -52,7 +52,9 @@ def _archive_detail(
     last_updated = (
         detail.get("lastUpdated")
         if isinstance(detail, dict) and isinstance(detail.get("lastUpdated"), str)
-        else summary.last_updated.isoformat() if summary.last_updated is not None else "unknown"
+        else summary.last_updated.isoformat()
+        if summary.last_updated is not None
+        else "unknown"
     )
     archive_metadata = {key: value for key, value in metadata.items() if key != "raw_body"}
     archive_metadata.update(
@@ -194,10 +196,7 @@ def run_au_cdr(
                 list_all_current_ids(client, brand, None if dry_run else store) if full else None
             )
         except Exception as error:
-            if (
-                isinstance(error, CDRResponseError)
-                or report.failures == failures_before
-            ):
+            if isinstance(error, CDRResponseError) or report.failures == failures_before:
                 report.record_failure(error)
             report.record_warning(f"{brand.brand_name} ({brand.brand_id}) listing failed: {error}")
             continue
@@ -209,13 +208,13 @@ def run_au_cdr(
 
         futures: dict[Future[tuple[PlanSummary, dict[str, Any], dict[str, Any]]], PlanSummary] = {}
         fetches: list[tuple[PlanSummary, dict[str, Any], dict[str, Any]]] = []
-        with ThreadPoolExecutor(
-            max_workers=max(1, client.max_concurrency_per_host)
-        ) as executor:
+        with ThreadPoolExecutor(max_workers=max(1, client.max_concurrency_per_host)) as executor:
             for summary in plans:
-                futures[executor.submit(
-                    _fetch_and_archive, client, store, brand, summary, dry_run, report
-                )] = summary
+                futures[
+                    executor.submit(
+                        _fetch_and_archive, client, store, brand, summary, dry_run, report
+                    )
+                ] = summary
             for future in as_completed(futures):
                 try:
                     fetches.append(future.result())
@@ -266,9 +265,7 @@ def run_au_cdr(
                     continue
 
                 version_hash = content_hash(plan)
-                version_path = (
-                    f"versions/{quote(plan.plan_id, safe=':@')}/{version_hash}.json"
-                )
+                version_path = f"versions/{quote(plan.plan_id, safe=':@')}/{version_hash}.json"
                 exists = store.exists(version_path)
                 status = "unchanged" if exists else "new"
                 report.record_version(status)

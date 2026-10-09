@@ -141,11 +141,14 @@ def test_per_host_concurrency_limit() -> None:
 
     with respx.mock:
         respx.get(url__regex=r"https://example\.com/.*").mock(side_effect=respond)
-        with PoliteClient(
-            max_concurrency_per_host=2,
-            min_interval=0,
-            sleep=lambda _: None,
-        ) as client, ThreadPoolExecutor(max_workers=5) as executor:
+        with (
+            PoliteClient(
+                max_concurrency_per_host=2,
+                min_interval=0,
+                sleep=lambda _: None,
+            ) as client,
+            ThreadPoolExecutor(max_workers=5) as executor,
+        ):
             futures = [
                 executor.submit(client.get_json, f"https://example.com/{index}")
                 for index in range(5)
@@ -176,8 +179,7 @@ def test_user_agent_and_custom_headers_are_sent() -> None:
 
     assert len(requests) == 2
     assert all(
-        request.headers["User-Agent"].startswith("tariff-catalogue/")
-        for request in requests
+        request.headers["User-Agent"].startswith("tariff-catalogue/") for request in requests
     )
     assert requests[0].headers["X-Test"] == "value"
 
@@ -207,6 +209,4 @@ def test_default_user_agent_uses_repository_owner(monkeypatch: pytest.MonkeyPatc
     monkeypatch.setenv("GITHUB_REPOSITORY_OWNER", "example-owner")
 
     with PoliteClient() as client:
-        assert client.user_agent.endswith(
-            "(+https://github.com/example-owner/tariff-catalogue)"
-        )
+        assert client.user_agent.endswith("(+https://github.com/example-owner/tariff-catalogue)")

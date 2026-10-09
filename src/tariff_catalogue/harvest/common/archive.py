@@ -191,9 +191,7 @@ class S3ArchiveStore:
         if endpoint_url is None and os.getenv("R2_ACCOUNT_ID"):
             endpoint_url = f"https://{os.environ['R2_ACCOUNT_ID']}.r2.cloudflarestorage.com"
 
-        client_options: dict[str, Any] = {
-            "region_name": "auto" if endpoint_url else "us-east-1"
-        }
+        client_options: dict[str, Any] = {"region_name": "auto" if endpoint_url else "us-east-1"}
         if endpoint_url:
             client_options["endpoint_url"] = endpoint_url
         if credentials is None:
@@ -229,9 +227,7 @@ class S3ArchiveStore:
             self.client.put_object(Bucket=self.bucket, Key=path, Body=data)
             return
         try:
-            self.client.put_object(
-                Bucket=self.bucket, Key=path, Body=data, IfNoneMatch="*"
-            )
+            self.client.put_object(Bucket=self.bucket, Key=path, Body=data, IfNoneMatch="*")
         except ClientError as error:
             if error.response.get("ResponseMetadata", {}).get("HTTPStatusCode") != 412:
                 raise

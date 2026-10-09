@@ -71,8 +71,7 @@ class PoliteClient:
         except PackageNotFoundError:
             package_version = "0.1.0"
         self.user_agent = (
-            f"tariff-catalogue/{package_version} "
-            f"(+https://github.com/{owner}/tariff-catalogue)"
+            f"tariff-catalogue/{package_version} (+https://github.com/{owner}/tariff-catalogue)"
         )
         self.max_concurrency_per_host = max_concurrency_per_host
         self.min_interval = min_interval
@@ -125,18 +124,14 @@ class PoliteClient:
                 if response.status_code in _RETRY_STATUSES:
                     if attempt + 1 < self.max_attempts:
                         self._record_retry()
-                        self._sleep(
-                            self._backoff(attempt, response.headers.get("Retry-After"))
-                        )
+                        self._sleep(self._backoff(attempt, response.headers.get("Retry-After")))
                         continue
 
                 if not 200 <= response.status_code < 300:
                     error = HarvestHTTPError(
                         str(response.url),
                         response.status_code,
-                        response.content[:_MAX_ERROR_BODY_BYTES].decode(
-                            "utf-8", errors="replace"
-                        ),
+                        response.content[:_MAX_ERROR_BODY_BYTES].decode("utf-8", errors="replace"),
                     )
                     raise error
 
