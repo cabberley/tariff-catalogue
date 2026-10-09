@@ -153,6 +153,7 @@ class PoliteClient:
                     "headers": dict(response.headers.items()),
                     "elapsed": elapsed,
                     "sha256": hashlib.sha256(raw_body).hexdigest(),
+                    "raw_body": raw_body,
                 }
                 return data, meta
         except Exception as exc:

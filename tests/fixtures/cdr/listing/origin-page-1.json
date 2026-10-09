@@ -1,0 +1,18 @@
+{
+  "data": {
+    "plans": [
+      {
+        "planId": "ORIGIN-1",
+        "displayName": "Origin Plan 1",
+        "fuelType": "ELECTRICITY",
+        "customerType": "RESIDENTIAL",
+        "type": "MARKET",
+        "effectiveFrom": "2026-10-01T00:00:00Z",
+        "lastUpdated": "2026-09-30T14:06:33.916Z",
+        "geography": {"distributors": ["Ergon"]}
+      }
+    ]
+  },
+  "links": {"self": "https://cdr.energymadeeasy.gov.au/origin/cds-au/v1/energy/plans?page=1"},
+  "meta": {"totalPages": 2}
+}
