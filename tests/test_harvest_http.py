@@ -4,6 +4,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 from email.utils import format_datetime
+from unittest.mock import Mock
 
 import httpx
 import pytest
@@ -62,7 +63,11 @@ def test_retry_after_is_honoured(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_retry_after_http_date_is_honoured(monkeypatch: pytest.MonkeyPatch) -> None:
     delays: list[float] = []
     monkeypatch.setattr("tariff_catalogue.harvest.common.http.random.uniform", lambda a, b: 0)
-    retry_at = datetime.now(UTC) + timedelta(seconds=5)
+    now = datetime(2026, 1, 1, tzinfo=UTC)
+    clock = Mock(wraps=datetime)
+    clock.now.return_value = now
+    monkeypatch.setattr("tariff_catalogue.harvest.common.http.datetime", clock)
+    retry_at = now + timedelta(seconds=5)
     url = "https://example.com/plans"
 
     with respx.mock:
@@ -77,8 +82,7 @@ def test_retry_after_http_date_is_honoured(monkeypatch: pytest.MonkeyPatch) -> N
         with PoliteClient(min_interval=0, sleep=delays.append) as client:
             assert client.get_json(url)[0] == {"ok": True}
 
-    assert len(delays) == 1
-    assert 4.0 <= delays[0] <= 5.0
+    assert delays == [5.0]
 
 
 def test_connection_error_retries(monkeypatch: pytest.MonkeyPatch) -> None:
