@@ -184,7 +184,9 @@ class S3ArchiveStore:
         if endpoint_url is None and os.getenv("R2_ACCOUNT_ID"):
             endpoint_url = f"https://{os.environ['R2_ACCOUNT_ID']}.r2.cloudflarestorage.com"
 
-        client_options: dict[str, Any] = {"region_name": "auto"}
+        client_options: dict[str, Any] = {
+            "region_name": "auto" if endpoint_url else "us-east-1"
+        }
         if endpoint_url:
             client_options["endpoint_url"] = endpoint_url
         if credentials is None:

@@ -107,6 +107,22 @@ def test_s3_store_uses_r2_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     )
 
 
+def test_s3_store_defaults_aws_region_without_endpoint(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for name in (
+        "R2_ENDPOINT_URL",
+        "R2_ACCOUNT_ID",
+        "R2_ACCESS_KEY_ID",
+        "R2_SECRET_ACCESS_KEY",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    client = Mock()
+    with patch("boto3.client", return_value=client) as create_client:
+        S3ArchiveStore("archive-bucket")
+    create_client.assert_called_once_with("s3", region_name="us-east-1")
+
+
 def test_archive_ls_cli_lists_matching_files(tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
     from tariff_catalogue.cli import main
 
