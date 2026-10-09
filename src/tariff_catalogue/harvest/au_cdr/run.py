@@ -159,11 +159,7 @@ def _fetch_and_archive(
     data, metadata = fetch_detail(client, brand, summary.plan_id)
     report.record_brand_metric(brand.brand_id, "details_fetched")
     if not dry_run:
-        try:
-            _archive_detail(store, brand, summary, data, metadata)
-        except Exception as error:
-            report.record_failure(error)
-            raise
+        _archive_detail(store, brand, summary, data, metadata)
     return summary, data, metadata
 
 
@@ -177,8 +173,14 @@ def run_au_cdr(
 ) -> RunReport:
     """Fetch changed plans and persist only valid, previously unseen versions."""
     report = getattr(client, "_report", None) or RunReport()
-    selected_brands = list(brands) if brands is not None else discover_brands(client, report)
-    index_by_id = {entry["plan_id"]: entry for entry in _load_index(store)}
+    failures_before = report.failures
+    try:
+        selected_brands = list(brands) if brands is not None else discover_brands(client, report)
+        index_by_id = {entry["plan_id"]: entry for entry in _load_index(store)}
+    except Exception as error:
+        if isinstance(error, CDRResponseError) or report.failures == failures_before:
+            report.record_failure(error)
+        return report
     now = datetime.now(UTC)
     timestamp = now.isoformat()
 
@@ -188,7 +190,9 @@ def run_au_cdr(
             since = load_last_success(store, brand.brand_id)
             plans = list_changed_plans(client, brand, since, None if dry_run else store)
             report.record_brand_metric(brand.brand_id, "plans_listed", len(plans))
-            all_current_ids = list_all_current_ids(client, brand) if full else None
+            all_current_ids = (
+                list_all_current_ids(client, brand, None if dry_run else store) if full else None
+            )
         except Exception as error:
             if (
                 isinstance(error, CDRResponseError)
@@ -288,7 +292,7 @@ def run_au_cdr(
                     and supplier.get("id") == brand.brand_id
                 ):
                     entry["status"] = "withdrawn"
-                    entry["withdrawn_at"] = timestamp
+                    entry.setdefault("withdrawn_at", timestamp)
 
         if not dry_run:
             if fetches_succeeded:
