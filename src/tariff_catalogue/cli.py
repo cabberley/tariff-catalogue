@@ -37,7 +37,8 @@ def _harvest_au_cdr(args: argparse.Namespace) -> None:
                 print(f"{brand.brand_name} ({brand.brand_id}): error")
                 continue
             print(f"{brand.brand_name} ({brand.brand_id}): {len(plans)} plans")
-    report.write_summary()
+    if not report.write_summary():
+        print(report.to_markdown(), end="")
 
 
 def _archive_ls(args: argparse.Namespace) -> None:
