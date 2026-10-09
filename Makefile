@@ -11,7 +11,7 @@ typecheck:
 	mypy
 
 test:
-	pytest
+	PYTHONPATH=src pytest
 
 harvest-au-cdr:
 	PYTHONPATH=src $(PYTHON) -m tariff_catalogue.cli harvest au-cdr
