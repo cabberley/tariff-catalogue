@@ -54,11 +54,13 @@ def _last_harvest(store: ArchiveStore, state_path: str) -> str | None:
         return None
     state = store.get_json(state_path)
     brands = state.get("brands", {}) if isinstance(state, dict) else {}
-    times = [
-        value.get("last_success")
-        for value in brands.values()
-        if isinstance(value, dict) and isinstance(value.get("last_success"), str)
-    ] if isinstance(brands, dict) else []
+    times: list[str] = []
+    if isinstance(brands, dict):
+        times.extend(
+            value["last_success"]
+            for value in brands.values()
+            if isinstance(value, dict) and isinstance(value.get("last_success"), str)
+        )
     return max(times) if times else None
 
 
@@ -167,10 +169,13 @@ def build(store: ArchiveStore, out_dir: Path) -> BuildReport:
                 }
             )
             copied_versions.append((plan_id, version_hash, version_bytes))
-        published_versions[plan_id] = sorted(
-            plan_versions,
-            key=lambda item: (item["effective_from"] or "", item["version_hash"]),
+        plan_versions.sort(
+            key=lambda item: (item["effective_from"] or "", item["version_hash"])
         )
+        for index, version in enumerate(plan_versions[:-1]):
+            if version["effective_to"] is None:
+                version["effective_to"] = plan_versions[index + 1]["effective_from"]
+        published_versions[plan_id] = plan_versions
 
     equivalence_counts = Counter(
         plan["equivalence_group"]
@@ -199,14 +204,14 @@ def build(store: ArchiveStore, out_dir: Path) -> BuildReport:
     files = 0
 
     for plan_id, version_hash, contents in copied_versions:
-        path = root / "plans" / quote(plan_id, safe="") / f"{version_hash}.json"
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(contents)
+        version_path = root / "plans" / quote(plan_id, safe="") / f"{version_hash}.json"
+        version_path.parent.mkdir(parents=True, exist_ok=True)
+        version_path.write_bytes(contents)
         files += 1
     for plan_id, versions in sorted(published_versions.items()):
-        path = root / "plans" / quote(plan_id, safe="") / "index.json"
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(
+        plan_index_path = root / "plans" / quote(plan_id, safe="") / "index.json"
+        plan_index_path.parent.mkdir(parents=True, exist_ok=True)
+        plan_index_path.write_bytes(
             _json_bytes({"schema_version": "v1", "plan_id": plan_id, "versions": versions})
         )
         files += 1
@@ -218,7 +223,7 @@ def build(store: ArchiveStore, out_dir: Path) -> BuildReport:
         )
         country_path = root / country / "index.json"
         country_path.parent.mkdir(parents=True, exist_ok=True)
-        regions = [
+        regions: list[dict[str, Any]] = [
             {
                 "region": region,
                 "plan_count": len(values),

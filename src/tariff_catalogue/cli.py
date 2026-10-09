@@ -7,7 +7,7 @@ from pathlib import Path
 from tariff_catalogue.harvest.au_cdr.brands import CDRResponseError, discover_brands
 from tariff_catalogue.harvest.au_cdr.listing import list_changed_plans, load_last_success
 from tariff_catalogue.harvest.au_cdr.run import run_au_cdr
-from tariff_catalogue.harvest.common.archive import LocalArchiveStore
+from tariff_catalogue.harvest.common.archive import LocalArchiveStore, S3ArchiveStore
 from tariff_catalogue.harvest.common.http import PoliteClient
 from tariff_catalogue.harvest.common.report import RunReport
 from tariff_catalogue.publish.build import build
