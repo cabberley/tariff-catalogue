@@ -1,0 +1,53 @@
+[build-system]
+requires = ["hatchling>=1.32.4"]
+build-backend = "hatchling.build"
+
+[project]
+name = "tariff_catalogue"
+version = "0.1.0"
+description = "A curated catalogue and data pipeline for energy tariffs."
+requires-python = ">=3.13"
+dependencies = [
+  # Switch to "tariff-core>=0.1,<0.2" once it is published.
+  "tariff-core @ git+https://github.com/cabberley/tariff-core.git@5e7002d8c56d84121bb66379daf1ec304d3377c3",
+  "httpx>=0.28.1",
+  "PyYAML>=6.0.3",
+  "boto3>=1.43.110",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=9.1.1",
+  "pytest-cov>=7.1.0",
+  "respx>=0.23.1",
+  "ruff>=0.16.10",
+  "mypy>=2.4.0",
+  "types-PyYAML>=6.0.12.20260906",
+  "boto3-stubs[s3]>=1.43.110",
+  "moto[s3]>=5.2.3",
+]
+
+[project.scripts]
+tariff-catalogue = "tariff_catalogue.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/tariff_catalogue"]
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+files = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--strict-config --strict-markers"
