@@ -1,0 +1,32 @@
+{
+  "data": {
+    "brandSummaries": [
+      {
+        "dataHolderBrandId": "origin",
+        "brandName": "Origin Energy",
+        "productBaseUri": "https://cdr.energymadeeasy.gov.au/origin",
+        "publicBaseUri": "https://public.origin.example",
+        "dataHolderBrandStatus": "ACTIVE"
+      },
+      {
+        "dataHolderBrandId": "retailer-two",
+        "brandName": "Retailer Two",
+        "publicBaseUri": "https://api.retailer-two.example",
+        "dataHolderBrandStatus": "ACTIVE"
+      },
+      {
+        "dataHolderBrandId": "inactive",
+        "brandName": "Inactive Retailer",
+        "publicBaseUri": "https://api.inactive.example",
+        "dataHolderBrandStatus": "REMOVED"
+      }
+    ]
+  },
+  "links": {
+    "self": "https://api.cdr.gov.au/cdr-register/v1/energy/data-holders/brands/summary",
+    "next": "https://api.cdr.gov.au/cdr-register/v1/energy/data-holders/brands/summary?page=2"
+  },
+  "meta": {
+    "totalRecords": 4
+  }
+}

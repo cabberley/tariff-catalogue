@@ -19,6 +19,7 @@ class _ReportData(TypedDict):
     partial: int
     durations: dict[str, float]
     errors: list[str]
+    warnings: list[str]
 
 
 @dataclass
@@ -31,6 +32,7 @@ class RunReport:
     partial: int = 0
     durations: dict[str, float] = field(default_factory=dict)
     errors: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
     _lock: Lock = field(default_factory=Lock, repr=False, compare=False)
 
     def record_request(self) -> None:
@@ -45,6 +47,10 @@ class RunReport:
         with self._lock:
             self.failures += 1
             self.errors.append(str(error))
+
+    def record_warning(self, warning: str) -> None:
+        with self._lock:
+            self.warnings.append(warning)
 
     def record_version(self, status: str) -> None:
         if status not in {"new", "unchanged", "partial"}:
@@ -72,6 +78,7 @@ class RunReport:
                 "partial": self.partial,
                 "durations": dict(self.durations),
                 "errors": list(self.errors),
+                "warnings": list(self.warnings),
             }
 
     def to_json(self) -> str:
@@ -104,6 +111,10 @@ class RunReport:
         if errors:
             lines.extend(["", "### Errors", ""])
             lines.extend(f"- {error}" for error in errors)
+        warnings = data["warnings"]
+        if warnings:
+            lines.extend(["", "### Warnings", ""])
+            lines.extend(f"- {warning}" for warning in warnings)
         return "\n".join(lines) + "\n"
 
     def write_summary(self, path: str | Path | None = None) -> bool:

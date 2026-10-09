@@ -1,0 +1,18 @@
+{
+  "data": {
+    "brandSummaries": [
+      {
+        "dataHolderBrandId": "another-brand",
+        "brandName": "Another Brand",
+        "productBaseUri": "https://api.another-brand.example",
+        "dataHolderBrandStatus": "ACTIVE"
+      }
+    ]
+  },
+  "links": {
+    "self": "https://api.cdr.gov.au/cdr-register/v1/energy/data-holders/brands/summary?page=2"
+  },
+  "meta": {
+    "totalRecords": 4
+  }
+}
