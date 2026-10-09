@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import gzip
 import hashlib
+import importlib
 import json
 import os
 import tempfile
-from collections.abc import Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol, cast
 from urllib.parse import quote
 
 from botocore.exceptions import ClientError
@@ -56,8 +57,7 @@ def _json_bytes(path: str, obj: Any) -> bytes:
     if parts[0] == "versions" and not isinstance(
         obj, (dict, list, str, int, float, bool, type(None))
     ):
-        from tariff_core import dump_plan
-
+        dump_plan = cast(Callable[[Any], str], importlib.import_module("tariff_core").dump_plan)
         return dump_plan(obj).encode("utf-8")
     return json.dumps(
         obj, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False
@@ -176,14 +176,15 @@ class S3ArchiveStore:
         *,
         client: S3Client | None = None,
     ) -> None:
-        self.bucket = bucket or os.getenv("R2_BUCKET") or os.getenv("R2_BUCKET_NAME")
-        if not self.bucket:
+        configured_bucket = bucket or os.getenv("R2_BUCKET") or os.getenv("R2_BUCKET_NAME")
+        if not configured_bucket:
             raise ValueError("An S3 bucket is required (pass bucket or set R2_BUCKET)")
+        self.bucket = configured_bucket
         endpoint_url = endpoint_url or os.getenv("R2_ENDPOINT_URL")
         if endpoint_url is None and os.getenv("R2_ACCOUNT_ID"):
             endpoint_url = f"https://{os.environ['R2_ACCOUNT_ID']}.r2.cloudflarestorage.com"
 
-        client_options: dict[str, str] = {"region_name": "auto"}
+        client_options: dict[str, Any] = {"region_name": "auto"}
         if endpoint_url:
             client_options["endpoint_url"] = endpoint_url
         if credentials is None:

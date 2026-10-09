@@ -1,6 +1,7 @@
 import gzip
 import hashlib
 from pathlib import Path
+from unittest.mock import Mock, patch
 
 import boto3
 import pytest
@@ -84,6 +85,26 @@ def test_local_paths_cannot_escape_root(tmp_path: Path) -> None:
     store = LocalArchiveStore(tmp_path / "archive")
     with pytest.raises(ValueError):
         store.get("../outside")
+
+
+def test_s3_store_uses_r2_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("R2_BUCKET", "archive-bucket")
+    monkeypatch.setenv("R2_ACCOUNT_ID", "account")
+    monkeypatch.setenv("R2_ACCESS_KEY_ID", "access")
+    monkeypatch.setenv("R2_SECRET_ACCESS_KEY", "secret")
+    client = Mock()
+
+    with patch("boto3.client", return_value=client) as create_client:
+        store = S3ArchiveStore()
+
+    assert store.client is client
+    create_client.assert_called_once_with(
+        "s3",
+        region_name="auto",
+        endpoint_url="https://account.r2.cloudflarestorage.com",
+        aws_access_key_id="access",
+        aws_secret_access_key="secret",
+    )
 
 
 def test_archive_ls_cli_lists_matching_files(tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
