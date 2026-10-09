@@ -27,6 +27,6 @@ jobs:
           curl --fail --silent --show-error \
             https://raw.githubusercontent.com/cabberley/tariff-core/main/docs/schema.md \
             --output /tmp/tariff-core-schema.md
-          tail -n +2 docs/schema.md > /tmp/catalogue-schema.md
-          tail -n +2 /tmp/tariff-core-schema.md > /tmp/upstream-schema.md
+          tail -n +3 docs/schema.md > /tmp/catalogue-schema.md
+          cp /tmp/tariff-core-schema.md /tmp/upstream-schema.md
           diff --unified /tmp/upstream-schema.md /tmp/catalogue-schema.md
