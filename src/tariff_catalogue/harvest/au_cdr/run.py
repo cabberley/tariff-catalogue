@@ -10,6 +10,7 @@ from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import quote
 
+import httpx
 from tariff_core import content_hash, from_cdr, to_dict, validate_plan
 
 from tariff_catalogue.harvest.au_cdr.brands import Brand, CDRResponseError, discover_brands
@@ -21,7 +22,7 @@ from tariff_catalogue.harvest.au_cdr.listing import (
     load_last_success,
 )
 from tariff_catalogue.harvest.common.archive import ArchiveStore
-from tariff_catalogue.harvest.common.http import PoliteClient
+from tariff_catalogue.harvest.common.http import HarvestHTTPError, PoliteClient
 from tariff_catalogue.harvest.common.report import RunReport
 
 INDEX_PATH = "index/au_cdr/plans.json"
@@ -103,7 +104,7 @@ def _index_entry(
     supplier = value.get("supplier", {})
     return {
         "plan_id": plan.plan_id,
-        "latest_version_hash": version_hash,
+        "version_hash": version_hash,
         "effective_from": effective.get("from") if isinstance(effective, dict) else None,
         "commodity": plan.commodity.value,
         "customer_type": plan.customer_type.value,
@@ -156,9 +157,13 @@ def _fetch_and_archive(
     report: RunReport,
 ) -> tuple[PlanSummary, dict[str, Any], dict[str, Any]]:
     data, metadata = fetch_detail(client, brand, summary.plan_id)
-    if not dry_run:
-        _archive_detail(store, brand, summary, data, metadata)
     report.record_brand_metric(brand.brand_id, "details_fetched")
+    if not dry_run:
+        try:
+            _archive_detail(store, brand, summary, data, metadata)
+        except Exception as error:
+            report.record_failure(error)
+            raise
     return summary, data, metadata
 
 
@@ -178,13 +183,17 @@ def run_au_cdr(
     timestamp = now.isoformat()
 
     for brand in selected_brands:
+        failures_before = report.failures
         try:
             since = load_last_success(store, brand.brand_id)
             plans = list_changed_plans(client, brand, since, None if dry_run else store)
             report.record_brand_metric(brand.brand_id, "plans_listed", len(plans))
             all_current_ids = list_all_current_ids(client, brand) if full else None
         except Exception as error:
-            if isinstance(error, CDRResponseError) or getattr(client, "_report", None) is None:
+            if (
+                isinstance(error, CDRResponseError)
+                or report.failures == failures_before
+            ):
                 report.record_failure(error)
             report.record_warning(f"{brand.brand_name} ({brand.brand_id}) listing failed: {error}")
             continue
@@ -209,6 +218,15 @@ def run_au_cdr(
                 except Exception as error:
                     if (
                         isinstance(error, CDRResponseError)
+                        or not isinstance(
+                            error,
+                            (
+                                HarvestHTTPError,
+                                httpx.HTTPError,
+                                json.JSONDecodeError,
+                                UnicodeDecodeError,
+                            ),
+                        )
                         or getattr(client, "_report", None) is None
                     ):
                         report.record_failure(error)

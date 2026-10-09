@@ -56,6 +56,20 @@ def test_fetch_detail_falls_back_after_406() -> None:
     assert data["data"]["planId"] == DETAIL_PLAN_ID
 
 
+def test_fetch_detail_falls_back_after_cdr_version_error() -> None:
+    with respx.mock:
+        route = respx.get(DETAIL_URL).mock(
+            side_effect=[
+                httpx.Response(200, json={"errors": [{"code": "CDR_VERSION"}]}),
+                httpx.Response(200, json={"data": {"planId": DETAIL_PLAN_ID}}),
+            ]
+        )
+        with PoliteClient(min_interval=0) as client:
+            fetch_detail(client, BRAND, DETAIL_PLAN_ID)
+
+    assert [call.request.headers["x-v"] for call in route.calls] == ["3", "2"]
+
+
 def test_run_creates_versions_deduplicates_and_detects_rate_change(tmp_path: Path) -> None:
     store = LocalArchiveStore(tmp_path / "archive")
     detail = _detail()
@@ -85,7 +99,7 @@ def test_run_creates_versions_deduplicates_and_detects_rate_change(tmp_path: Pat
     assert report.brands["origin"]["details_fetched"] == 3
     assert "| origin | 3 | 3 | 2 | 1 | 0 | 0 |" in report.to_markdown()
     index = store.get_json(INDEX_PATH)
-    assert any(index[0]["latest_version_hash"] in path for path in versions)
+    assert any(index[0]["version_hash"] in path for path in versions)
     assert len(list(store.list("raw/au_cdr_detail/"))) == 6
 
 

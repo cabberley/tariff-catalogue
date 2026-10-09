@@ -16,8 +16,12 @@ def _is_version_error(payload: Any) -> bool:
     if not isinstance(payload, dict) or not payload.get("errors"):
         return False
     text = json.dumps(payload["errors"], ensure_ascii=False).casefold()
-    return "version" in text and any(
-        marker in text for marker in ("invalid", "unsupported", "missing", "required")
+    return "version" in text and (
+        "cdr_version" in text
+        or any(
+            marker in text
+            for marker in ("invalid", "unsupported", "missing", "required", "not supported")
+        )
     )
 
 
