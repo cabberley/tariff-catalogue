@@ -164,7 +164,10 @@ def test_user_agent_and_custom_headers_are_sent() -> None:
             )
         )
         with PoliteClient(min_interval=0, sleep=lambda _: None) as client:
-            client.get_json(url, headers={"X-Test": "value"})
+            client.get_json(
+                url,
+                headers={"User-Agent": "custom-agent", "X-Test": "value"},
+            )
             client.get_json(url)
 
     assert len(requests) == 2

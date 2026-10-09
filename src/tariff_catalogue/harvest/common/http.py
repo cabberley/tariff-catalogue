@@ -65,7 +65,7 @@ class PoliteClient:
         if base_delay < 0 or max_delay < 0:
             raise ValueError("retry delays cannot be negative")
 
-        owner = os.getenv("GITHUB_REPOSITORY_OWNER", "owner")
+        owner = os.getenv("GITHUB_REPOSITORY_OWNER", "owner").strip() or "owner"
         try:
             package_version = version("tariff_catalogue")
         except PackageNotFoundError:
@@ -105,8 +105,7 @@ class PoliteClient:
         state = self._host_state(host)
 
         request_headers = httpx.Headers(headers)
-        if "User-Agent" not in request_headers:
-            request_headers["User-Agent"] = self.user_agent
+        request_headers["User-Agent"] = self.user_agent
 
         try:
             for attempt in range(self.max_attempts):
