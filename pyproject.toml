@@ -33,6 +33,9 @@ tariff-catalogue = "tariff_catalogue.cli:main"
 [tool.hatch.build.targets.wheel]
 packages = ["src/tariff_catalogue"]
 
+[tool.hatch.metadata]
+allow-direct-references = true
+
 [tool.ruff]
 target-version = "py313"
 line-length = 100
