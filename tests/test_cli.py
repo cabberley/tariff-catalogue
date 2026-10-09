@@ -6,7 +6,6 @@ from tariff_catalogue.cli import build_parser, main
 @pytest.mark.parametrize(
     "command",
     [
-        ["publish"],
         ["check"],
         ["community", "intake"],
     ],

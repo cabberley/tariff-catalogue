@@ -10,6 +10,8 @@ from tariff_catalogue.harvest.au_cdr.run import run_au_cdr
 from tariff_catalogue.harvest.common.archive import LocalArchiveStore
 from tariff_catalogue.harvest.common.http import PoliteClient
 from tariff_catalogue.harvest.common.report import RunReport
+from tariff_catalogue.publish.build import build
+from tariff_catalogue.publish.upload import upload
 
 
 def _not_implemented(_args: argparse.Namespace) -> None:
@@ -62,6 +64,20 @@ def _archive_ls(args: argparse.Namespace) -> None:
         print(path)
 
 
+def _publish(args: argparse.Namespace) -> None:
+    report = build(LocalArchiveStore(args.archive_root), args.out)
+    if not args.dry_run:
+        destination = S3ArchiveStore(os.getenv("PUBLISH_BUCKET") or os.getenv("R2_BUCKET"))
+        upload_report = upload(destination, args.out)
+        print(
+            f"Built {report.plans} plans ({report.versions} versions); "
+            f"uploaded {upload_report.uploaded} files, "
+            f"{upload_report.unchanged} unchanged."
+        )
+    else:
+        print(f"Built {report.plans} plans ({report.versions} versions) in {args.out}.")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="tariff-catalogue")
     commands = parser.add_subparsers(dest="command", required=True)
@@ -83,7 +99,16 @@ def build_parser() -> argparse.ArgumentParser:
     au_cdr.set_defaults(handler=_harvest_au_cdr)
 
     publish = commands.add_parser("publish", help="Build and publish catalogue files.")
-    publish.set_defaults(handler=_not_implemented)
+    publish.add_argument(
+        "--dry-run",
+        action="store_true",
+        default=os.getenv("DRY_RUN", "").casefold() in {"1", "true", "yes"},
+    )
+    publish.add_argument("--out", type=Path, default=Path("dist"))
+    publish.add_argument(
+        "--archive-root", type=Path, default=Path(os.getenv("ARCHIVE_ROOT", "archive"))
+    )
+    publish.set_defaults(handler=_publish)
 
     check = commands.add_parser("check", help="Run catalogue checks.")
     check.set_defaults(handler=_not_implemented)
