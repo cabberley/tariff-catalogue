@@ -17,6 +17,8 @@ class _ReportData(TypedDict):
     new_versions: int
     unchanged: int
     partial: int
+    invalid: int
+    brands: dict[str, dict[str, int]]
     durations: dict[str, float]
     errors: list[str]
     warnings: list[str]
@@ -30,6 +32,8 @@ class RunReport:
     new_versions: int = 0
     unchanged: int = 0
     partial: int = 0
+    invalid: int = 0
+    brands: dict[str, dict[str, int]] = field(default_factory=dict)
     durations: dict[str, float] = field(default_factory=dict)
     errors: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
@@ -63,6 +67,38 @@ class RunReport:
             else:
                 self.partial += 1
 
+    def record_brand_metric(self, brand: str, metric: str, amount: int = 1) -> None:
+        with self._lock:
+            metrics = self.brands.setdefault(
+                brand,
+                {
+                    "plans_listed": 0,
+                    "details_fetched": 0,
+                    "new": 0,
+                    "unchanged": 0,
+                    "invalid": 0,
+                    "partial": 0,
+                },
+            )
+            metrics[metric] = metrics.get(metric, 0) + amount
+
+    def record_invalid(self, brand: str, error: Exception | str) -> None:
+        with self._lock:
+            self.invalid += 1
+            metrics = self.brands.setdefault(
+                brand,
+                {
+                    "plans_listed": 0,
+                    "details_fetched": 0,
+                    "new": 0,
+                    "unchanged": 0,
+                    "invalid": 0,
+                    "partial": 0,
+                },
+            )
+            metrics["invalid"] += 1
+            self.errors.append(str(error))
+
     def record_duration(self, name: str, seconds: float) -> None:
         with self._lock:
             self.durations[name] = self.durations.get(name, 0.0) + seconds
@@ -76,6 +112,8 @@ class RunReport:
                 "new_versions": self.new_versions,
                 "unchanged": self.unchanged,
                 "partial": self.partial,
+                "invalid": self.invalid,
+                "brands": {brand: dict(metrics) for brand, metrics in self.brands.items()},
                 "durations": dict(self.durations),
                 "errors": list(self.errors),
                 "warnings": list(self.warnings),
@@ -97,7 +135,24 @@ class RunReport:
             f"| New versions | {data['new_versions']} |",
             f"| Unchanged | {data['unchanged']} |",
             f"| Partial | {data['partial']} |",
+            f"| Invalid | {data['invalid']} |",
         ]
+        if data["brands"]:
+            lines.extend(
+                [
+                    "",
+                    "### Brands",
+                    "",
+                    "| Brand | Listed | Fetched | New | Unchanged | Invalid | Partial |",
+                    "| --- | ---: | ---: | ---: | ---: | ---: | ---: |",
+                ]
+            )
+            lines.extend(
+                f"| {brand} | {metrics['plans_listed']} | {metrics['details_fetched']} "
+                f"| {metrics['new']} | {metrics['unchanged']} | {metrics['invalid']} "
+                f"| {metrics['partial']} |"
+                for brand, metrics in sorted(data["brands"].items())
+            )
         durations = data["durations"]
         if durations:
             lines.extend(

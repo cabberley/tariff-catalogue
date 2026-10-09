@@ -9,7 +9,7 @@ description = "A curated catalogue and data pipeline for energy tariffs."
 requires-python = ">=3.13"
 dependencies = [
   # Switch to "tariff-core>=0.1,<0.2" once it is published.
-  "tariff-core @ git+https://github.com/cabberley/tariff-core.git@5e7002d8c56d84121bb66379daf1ec304d3377c3",
+  "tariff-core @ git+https://github.com/cabberley/tariff-core.git@4518e918a56625f9577526bb805b5dadebafdfe7",
   "httpx>=0.28.1",
   "PyYAML>=6.0.3",
   "boto3>=1.43.110",
