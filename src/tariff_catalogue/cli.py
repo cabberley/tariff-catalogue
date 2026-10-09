@@ -1,10 +1,19 @@
 """Command-line interface for the tariff catalogue."""
 
 import argparse
+import os
+from pathlib import Path
+
+from tariff_catalogue.harvest.common.archive import LocalArchiveStore
 
 
 def _not_implemented(_args: argparse.Namespace) -> None:
     print("not implemented")
+
+
+def _archive_ls(args: argparse.Namespace) -> None:
+    for path in LocalArchiveStore(args.root).list(args.prefix):
+        print(path)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -26,6 +35,13 @@ def build_parser() -> argparse.ArgumentParser:
     community_commands = community.add_subparsers(dest="community_command", required=True)
     intake = community_commands.add_parser("intake", help="Process community plan intake.")
     intake.set_defaults(handler=_not_implemented)
+
+    archive_ls = commands.add_parser("archive-ls", help="List files in the local archive.")
+    archive_ls.add_argument("prefix", nargs="?", default="")
+    archive_ls.add_argument(
+        "--root", type=Path, default=Path(os.getenv("ARCHIVE_ROOT", "archive"))
+    )
+    archive_ls.set_defaults(handler=_archive_ls)
 
     return parser
 

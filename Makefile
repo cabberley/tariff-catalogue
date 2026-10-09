@@ -2,7 +2,7 @@ PYTHON ?= python
 DRY_RUN ?= 0
 export DRY_RUN
 
-.PHONY: lint typecheck test harvest-au-cdr publish
+.PHONY: lint typecheck test harvest-au-cdr publish archive-ls
 
 lint:
 	ruff check .
@@ -18,3 +18,6 @@ harvest-au-cdr:
 
 publish:
 	PYTHONPATH=src $(PYTHON) -m tariff_catalogue.cli publish
+
+archive-ls:
+	PYTHONPATH=src $(PYTHON) -m tariff_catalogue.cli archive-ls "$(PREFIX)"
