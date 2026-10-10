@@ -1,0 +1,52 @@
+plan_id: au:network:ergon:east:RTOUE
+kind: network
+display_name: Ergon Residential Time of Use Energy (RTOUE)
+supplier: {id: ergon, name: Ergon Energy}
+commodity: electricity
+customer_type: residential
+region: {country: AU, network: ergon, zone: east}
+currency: AUD
+tax: {inclusive: false, rate: "0.10"}
+timezone: Australia/Brisbane
+time_basis: local
+holidays: {calendar: AU-QLD, treatment: none}
+effective: {from: 2026-07-01, to: 2027-07-01}
+pricing_model: bundled
+schedules:
+  peak: [{days: all, time: ["16:00", "21:00"]}]
+  shoulder: [{days: all, time: ["21:00", "11:00"]}]
+  off_peak: [{days: all, time: ["11:00", "16:00"]}]
+components:
+  - kind: usage
+    direction: import
+    register: general
+    quantity_unit: kWh
+    schedule: peak
+    period: peak
+    period_label: Peak
+    rate: "0.419"
+  - kind: usage
+    direction: import
+    register: general
+    quantity_unit: kWh
+    schedule: shoulder
+    period: shoulder
+    period_label: Shoulder
+    rate: "0.225"
+  - kind: usage
+    direction: import
+    register: general
+    quantity_unit: kWh
+    schedule: off_peak
+    period: off_peak
+    period_label: Off peak
+    rate: "0.0625"
+source:
+  type: network_list
+  url: https://www.ergon.com.au/network/our-network/network-pricing-and-tariffs
+  retrieved_at: 2026-10-10T00:00:00Z
+  table_reference: "RTOUE row in the 2026-27 Network Price List; time periods in the 2026-27 Tariff Guide"
+confidence: low
+notes:
+  - Seed example rates require verification against the linked 2026-27 Network Price List before approval.
+  - Time windows are from the Ergon Energy Network Tariff Guide 2026-27, residential time-of-use section.

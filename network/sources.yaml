@@ -1,0 +1,9 @@
+ergon:
+  needs_browser: true
+  documents:
+    - name: Ergon Energy Network Tariff Guide 2026-27
+      url: https://www.ergon.com.au/__data/assets/pdf_file/0009/2058084/Ergon-Energy-Network-Tariff-Guide-2026-27.pdf
+    - name: Ergon Energy 2026-27 Pricing Proposal Overview
+      url: https://www.ergon.com.au/__data/assets/pdf_file/0004/1985980/Ergon-Energy-2026-27-Pricing-Proposal-Overview.pdf
+    - name: Ergon Network Pricing document index
+      url: https://www.ergon.com.au/network/our-network/network-pricing-and-tariffs

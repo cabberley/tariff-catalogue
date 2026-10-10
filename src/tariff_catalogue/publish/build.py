@@ -19,6 +19,7 @@ from tariff_core import content_hash, parse_plan, to_dict, validate_plan, versio
 from tariff_catalogue.checks.synthetic import check_version
 from tariff_catalogue.harvest.au_cdr.run import _pricing_hash
 from tariff_catalogue.harvest.common.archive import ArchiveStore
+from tariff_catalogue.review.network_validation import validate_network_file
 
 
 @dataclass(frozen=True, slots=True)
@@ -169,6 +170,86 @@ def _add_community_plans(
         copied_versions.append((plan_id, version_hash, version_bytes))
 
 
+def _add_network_plans(
+    published: list[dict[str, Any]],
+    published_versions: dict[str, list[dict[str, Any]]],
+    copied_versions: list[tuple[str, str, bytes]],
+) -> list[tuple[str, bytes]]:
+    network_files: list[tuple[str, bytes]] = []
+    summaries: dict[str, dict[str, Any]] = {}
+    latest_effective: dict[str, str] = {}
+    root = Path("network")
+    tariff_root = root / "au"
+    for path in sorted([*tariff_root.rglob("*.yaml"), *tariff_root.rglob("*.yml")]):
+        errors = validate_network_file(path)
+        if errors:
+            raise ValueError("\n".join(errors))
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+        plan = parse_plan(data)
+        plan_id = plan.plan_id
+        if plan_id is None:
+            raise ValueError(f"{path}: plan_id is required")
+        if plan_id in published_versions and plan_id not in summaries:
+            raise ValueError(f"{path}: duplicate plan_id {plan_id}")
+        try:
+            plan_version_id = version_id(plan)
+        except ValueError as error:
+            raise ValueError(f"{path}: {error}") from error
+        plan_data = to_dict(plan)
+        plan_data["id"] = plan_version_id
+        version_hash = content_hash(plan)
+        version_bytes = _json_bytes(plan_data)
+        effective = plan_data.get("effective", {})
+        source = plan_data.get("source", {})
+        region = plan_data.get("region", {})
+        if not isinstance(region, dict):
+            region = {}
+        summary: dict[str, Any] = {
+            "plan_id": plan_id,
+            "display_name": plan.display_name,
+            "supplier": plan_data.get("supplier"),
+            "commodity": plan.commodity.value,
+            "customer_type": plan.customer_type.value,
+            "currency": plan.currency,
+            "pricing_model": plan.pricing_model.value,
+            "latest_version": version_hash,
+            "version_hash": version_hash,
+            "status": "current",
+            "partial": plan.partial,
+            "confidence": plan.confidence.value if plan.confidence else None,
+            "equivalence_group": None,
+            "finding_codes": [],
+            "equivalent_count": 1,
+            "_country": str(region.get("country", "AU")).casefold(),
+            "_region": str(region.get("network", "global")).casefold(),
+        }
+        effective_from = str(effective.get("from", "")) if isinstance(effective, dict) else ""
+        if plan_id not in summaries or effective_from >= latest_effective[plan_id]:
+            summaries[plan_id] = summary
+            latest_effective[plan_id] = effective_from
+        versions = published_versions.setdefault(plan_id, [])
+        versions.append(
+            {
+                "version_hash": version_hash,
+                "effective_from": effective.get("from") if isinstance(effective, dict) else None,
+                "effective_to": effective.get("to") if isinstance(effective, dict) else None,
+                "first_seen": source.get("retrieved_at") if isinstance(source, dict) else None,
+            }
+        )
+        copied_versions.append((plan_id, version_hash, version_bytes))
+        relative = path.relative_to(root)
+        if len(relative.parts) != 5 or relative.parts[0] != "au":
+            raise ValueError(
+                f"{path}: network path must be network/au/{'{dnsp}/{year}/{zone}/{code}.yaml'}"
+            )
+        output_path = Path("au/network", *relative.parts[1:]).with_suffix(".json")
+        network_files.append((output_path.as_posix(), version_bytes))
+    published.extend(summaries.values())
+    for versions in published_versions.values():
+        versions.sort(key=lambda item: (item["effective_from"] or "", item["version_hash"]))
+    return network_files
+
+
 def build(store: ArchiveStore, out_dir: Path) -> BuildReport:
     """Build ``out_dir/v1`` from the archive's current plan indexes and versions."""
     out_dir = Path(out_dir)
@@ -263,6 +344,7 @@ def build(store: ArchiveStore, out_dir: Path) -> BuildReport:
         published_versions[plan_id] = plan_versions
 
     _add_community_plans(published, published_versions, copied_versions)
+    network_files = _add_network_plans(published, published_versions, copied_versions)
 
     equivalence_counts = Counter(
         plan["equivalence_group"]
@@ -294,6 +376,11 @@ def build(store: ArchiveStore, out_dir: Path) -> BuildReport:
         version_path = root / "plans" / quote(plan_id, safe="") / f"{version_hash}.json"
         version_path.parent.mkdir(parents=True, exist_ok=True)
         version_path.write_bytes(contents)
+        files += 1
+    for relative_path, contents in network_files:
+        network_path = root / relative_path
+        network_path.parent.mkdir(parents=True, exist_ok=True)
+        network_path.write_bytes(contents)
         files += 1
     for plan_id, versions in sorted(published_versions.items()):
         plan_index_path = root / "plans" / quote(plan_id, safe="") / "index.json"

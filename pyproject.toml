@@ -26,6 +26,7 @@ dev = [
   "boto3-stubs[s3]>=1.43.110",
   "moto[s3]>=5.2.3",
 ]
+network-watch = ["playwright>=1.63.0"]
 
 [project.scripts]
 tariff-catalogue = "tariff_catalogue.cli:main"
