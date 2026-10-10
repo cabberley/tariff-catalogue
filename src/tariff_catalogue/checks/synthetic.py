@@ -178,7 +178,18 @@ def check_version(
         else {}
     )
     for profile in _profiles(plan):
-        result = _bill(plan, profile)
+        try:
+            result = _bill(plan, profile)
+        except ValueError as error:
+            findings.append(
+                CheckFinding(
+                    "bill_error",
+                    "review",
+                    f"Synthetic bill could not be calculated: {error}",
+                    profile.name,
+                )
+            )
+            continue
         for warning in result.warnings:
             findings.append(
                 CheckFinding(
@@ -191,7 +202,18 @@ def check_version(
         previous_profile = previous_profiles.get(profile.name)
         if previous_plan is None or previous_profile is None:
             continue
-        previous_result = _bill(previous_plan, previous_profile)
+        try:
+            previous_result = _bill(previous_plan, previous_profile)
+        except ValueError as error:
+            findings.append(
+                CheckFinding(
+                    "bill_error",
+                    "review",
+                    f"Previous synthetic bill could not be calculated: {error}",
+                    profile.name,
+                )
+            )
+            continue
         baseline = abs(previous_result.total)
         difference = abs(result.total - previous_result.total)
         if (baseline == 0 and difference > 0) or (
