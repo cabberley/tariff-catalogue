@@ -38,11 +38,12 @@ def _summaries(payload: Any) -> list[dict[str, Any]]:
     if errors:
         raise CDRResponseError(f"CDR Register returned errors: {errors}")
     try:
-        summaries = payload["data"]["brandSummaries"]
+        data = payload["data"]
     except (KeyError, TypeError) as error:
-        raise CDRResponseError("CDR Register response has no data.brandSummaries") from error
+        raise CDRResponseError("CDR Register response has no data") from error
+    summaries = data.get("brandSummaries") if isinstance(data, dict) else data
     if not isinstance(summaries, list) or any(not isinstance(item, dict) for item in summaries):
-        raise CDRResponseError("CDR Register data.brandSummaries must be a list of objects")
+        raise CDRResponseError("CDR Register data must be a list of objects")
     return summaries
 
 
@@ -55,9 +56,13 @@ def discover_brands(client: PoliteClient, report: RunReport | None = None) -> li
         if next_url in seen_urls:
             raise CDRResponseError(f"CDR Register pagination loop at {next_url}")
         seen_urls.add(next_url)
-        payload, _meta = client.get_json(next_url, headers={"x-v": "1"})
+        payload, _meta = client.get_json(next_url, headers={"x-v": "2"})
         for summary in _summaries(payload):
-            brand_id = summary.get("dataHolderBrandId") or summary.get("brandId")
+            brand_id = (
+                summary.get("dataHolderBrandId")
+                or summary.get("brandId")
+                or summary.get("interimId")
+            )
             brand_name = summary.get("brandName")
             status = str(
                 summary.get("dataHolderBrandStatus") or summary.get("status") or ""
@@ -77,7 +82,7 @@ def discover_brands(client: PoliteClient, report: RunReport | None = None) -> li
                 status=status,
                 product_base_uri_field=base_uri_field,
             )
-            if brand.status.casefold() == "active":
+            if not brand.status or brand.status.casefold() == "active":
                 brands.append(brand)
             elif report is not None:
                 report.record_warning(
