@@ -265,9 +265,10 @@ def run_au_cdr(
                     report.record_invalid(brand.brand_id, f"{summary.plan_id}: missing plan_id")
                     continue
 
+                plan_id = plan.plan_id
                 version_hash = content_hash(plan)
                 version_path = (
-                    f"versions/{quote(plan.plan_id, safe=':@')}/{version_hash}.json"
+                    f"versions/{quote(plan_id, safe=':@')}/{version_hash}.json"
                 )
                 exists = store.exists(version_path)
                 status = "unchanged" if exists else "new"
@@ -279,8 +280,8 @@ def run_au_cdr(
                 if not exists and not dry_run:
                     store.put_json(version_path, plan)
 
-                previous = index_by_id.get(plan.plan_id)
-                index_by_id[plan.plan_id] = _index_entry(plan, version_hash, previous, now)
+                previous = index_by_id.get(plan_id)
+                index_by_id[plan_id] = _index_entry(plan, version_hash, previous, now)
 
         if all_current_ids is not None:
             current_keys = {_plan_key(plan_id) for plan_id in all_current_ids}
