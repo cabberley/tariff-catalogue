@@ -65,6 +65,46 @@ def test_normal_electricity_and_converted_gas_plans_have_no_findings() -> None:
     assert check_version(_plan("0.04", commodity="gas")) == []
 
 
+def test_finite_block_tiers_produce_bill_error_findings() -> None:
+    finite_block_plan = parse_plan(
+        {
+            "kind": "retail",
+            "commodity": "electricity",
+            "timezone": "Australia/Brisbane",
+            "components": [
+                {"kind": "fixed", "label": "supply", "unit": "per_day", "rate": "1"},
+                {
+                    "kind": "usage",
+                    "direction": "import",
+                    "register": "general",
+                    "quantity_unit": "kWh",
+                    "blocks": {
+                        "period": "billing_period",
+                        "prorate": False,
+                        "tiers": [{"rate": "0.20", "up_to": "100"}],
+                    },
+                },
+            ],
+        }
+    )
+
+    current_findings = check_version(finite_block_plan)
+    assert any(
+        finding.code == "bill_error"
+        and finding.profile == "no_solar"
+        and "block tiers must end with an unlimited tier" in finding.message
+        for finding in current_findings
+    )
+
+    previous_findings = check_version(_plan("0.20"), finite_block_plan)
+    assert any(
+        finding.code == "bill_error"
+        and finding.profile == "no_solar"
+        and finding.message.startswith("Previous synthetic bill could not be calculated:")
+        for finding in previous_findings
+    )
+
+
 def test_profiles_are_package_resources() -> None:
     for name in (
         "no_solar",
