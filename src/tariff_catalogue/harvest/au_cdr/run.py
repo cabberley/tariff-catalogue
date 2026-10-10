@@ -294,7 +294,7 @@ def run_au_cdr(
                 findings = check_version(plan, previous_plan)
                 plan = lower_confidence(plan, findings)
                 version_hash = content_hash(plan)
-                version_path = f"versions/{quote(plan.plan_id, safe=':@')}/{version_hash}.json"
+                version_path = f"versions/{quote(plan_id, safe=':@')}/{version_hash}.json"
                 exists = store.exists(version_path)
                 status = "unchanged" if exists else "new"
                 report.record_version(status)
