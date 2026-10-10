@@ -6,9 +6,7 @@ from tariff_catalogue.checks.synthetic import check_version
 def _plan(rate: str, *, fixed: bool = True, commodity: str = "electricity"):
     components = []
     if fixed:
-        components.append(
-            {"kind": "fixed", "label": "supply", "unit": "per_day", "rate": "1"}
-        )
+        components.append({"kind": "fixed", "label": "supply", "unit": "per_day", "rate": "1"})
     components.append(
         {
             "kind": "usage",

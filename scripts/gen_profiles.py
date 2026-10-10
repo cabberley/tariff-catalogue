@@ -30,8 +30,8 @@ def _base_loads(starts: list[datetime], rng: random.Random) -> list[float]:
     shape = []
     for start in starts:
         hour = start.hour + start.minute / 60
-        morning = math.exp(-((hour - 7.0) / 2.0) ** 2)
-        evening = 2.2 * math.exp(-((hour - 19.0) / 3.0) ** 2)
+        morning = math.exp(-(((hour - 7.0) / 2.0) ** 2))
+        evening = 2.2 * math.exp(-(((hour - 19.0) / 3.0) ** 2))
         base = 0.16 + 0.13 * morning + 0.27 * evening
         shape.append(base * (0.85 + 0.3 * rng.random()))
     return _normalise(shape, 5000.0)
@@ -110,10 +110,7 @@ def _controlled_profile(
     starts: list[datetime], loads: list[float]
 ) -> list[tuple[datetime, str, float, float]]:
     rows = _electric_rows(starts, loads)
-    extra = [
-        1.0 if start.hour >= 22 or start.hour < 6 else 0.0
-        for start in starts
-    ]
+    extra = [1.0 if start.hour >= 22 or start.hour < 6 else 0.0 for start in starts]
     extra = _normalise(extra, 2000.0)
     rows.extend(
         (

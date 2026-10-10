@@ -86,9 +86,9 @@ def test_run_creates_versions_deduplicates_and_detects_rate_change(tmp_path: Pat
         with PoliteClient(min_interval=0, report=report) as client:
             run_au_cdr(client, store, brands=[BRAND])
             run_au_cdr(client, store, brands=[BRAND])
-            detail["data"]["electricityContract"]["tariffPeriod"][0]["timeOfUseRates"][0][
-                "rates"
-            ][0]["unitPrice"] = "0.38955"
+            detail["data"]["electricityContract"]["tariffPeriod"][0]["timeOfUseRates"][0]["rates"][
+                0
+            ]["unitPrice"] = "0.38955"
             run_au_cdr(client, store, brands=[BRAND])
 
     assert listing_route.call_count == 3
@@ -131,9 +131,7 @@ def test_invalid_plan_is_archived_but_not_versioned(tmp_path: Path, monkeypatch)
     assert list(store.list("raw/au_cdr_detail/"))
 
 
-def test_synthetic_findings_are_stored_reported_and_published(
-    tmp_path: Path, monkeypatch
-) -> None:
+def test_synthetic_findings_are_stored_reported_and_published(tmp_path: Path, monkeypatch) -> None:
     from tariff_catalogue.harvest.au_cdr import run as run_module
 
     store = LocalArchiveStore(tmp_path / "archive")

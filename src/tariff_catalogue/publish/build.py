@@ -161,7 +161,9 @@ def build(store: ArchiveStore, out_dir: Path) -> BuildReport:
             first_seen = (
                 entry.get("first_seen")
                 if version_hash == latest_hash
-                else source.get("retrieved_at") if isinstance(source, dict) else None
+                else source.get("retrieved_at")
+                if isinstance(source, dict)
+                else None
             )
             plan_versions.append(
                 {
@@ -174,9 +176,7 @@ def build(store: ArchiveStore, out_dir: Path) -> BuildReport:
                 }
             )
             copied_versions.append((plan_id, version_hash, version_bytes))
-        plan_versions.sort(
-            key=lambda item: (item["effective_from"] or "", item["version_hash"])
-        )
+        plan_versions.sort(key=lambda item: (item["effective_from"] or "", item["version_hash"]))
         for index, version in enumerate(plan_versions[:-1]):
             if version["effective_to"] is None:
                 version["effective_to"] = plan_versions[index + 1]["effective_from"]

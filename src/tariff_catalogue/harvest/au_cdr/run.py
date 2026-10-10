@@ -53,7 +53,9 @@ def _archive_detail(
     last_updated = (
         detail.get("lastUpdated")
         if isinstance(detail, dict) and isinstance(detail.get("lastUpdated"), str)
-        else summary.last_updated.isoformat() if summary.last_updated is not None else "unknown"
+        else summary.last_updated.isoformat()
+        if summary.last_updated is not None
+        else "unknown"
     )
     archive_metadata = {key: value for key, value in metadata.items() if key != "raw_body"}
     archive_metadata.update(
@@ -218,10 +220,7 @@ def run_au_cdr(
                 list_all_current_ids(client, brand, None if dry_run else store) if full else None
             )
         except Exception as error:
-            if (
-                isinstance(error, CDRResponseError)
-                or report.failures == failures_before
-            ):
+            if isinstance(error, CDRResponseError) or report.failures == failures_before:
                 report.record_failure(error)
             report.record_warning(f"{brand.brand_name} ({brand.brand_id}) listing failed: {error}")
             continue
@@ -233,13 +232,13 @@ def run_au_cdr(
 
         futures: dict[Future[tuple[PlanSummary, dict[str, Any], dict[str, Any]]], PlanSummary] = {}
         fetches: list[tuple[PlanSummary, dict[str, Any], dict[str, Any]]] = []
-        with ThreadPoolExecutor(
-            max_workers=max(1, client.max_concurrency_per_host)
-        ) as executor:
+        with ThreadPoolExecutor(max_workers=max(1, client.max_concurrency_per_host)) as executor:
             for summary in plans:
-                futures[executor.submit(
-                    _fetch_and_archive, client, store, brand, summary, dry_run, report
-                )] = summary
+                futures[
+                    executor.submit(
+                        _fetch_and_archive, client, store, brand, summary, dry_run, report
+                    )
+                ] = summary
             for future in as_completed(futures):
                 try:
                     fetches.append(future.result())
@@ -285,18 +284,17 @@ def run_au_cdr(
                     )
                     report.record_invalid(brand.brand_id, f"{summary.plan_id}: {message}")
                     continue
-                if plan.plan_id is None:
+                plan_id = plan.plan_id
+                if plan_id is None:
                     report.record_invalid(brand.brand_id, f"{summary.plan_id}: missing plan_id")
                     continue
 
-                previous = index_by_id.get(plan.plan_id)
-                previous_plan = _previous_plan(store, plan.plan_id, previous, report)
+                previous = index_by_id.get(plan_id)
+                previous_plan = _previous_plan(store, plan_id, previous, report)
                 findings = check_version(plan, previous_plan)
                 plan = lower_confidence(plan, findings)
                 version_hash = content_hash(plan)
-                version_path = (
-                    f"versions/{quote(plan.plan_id, safe=':@')}/{version_hash}.json"
-                )
+                version_path = f"versions/{quote(plan_id, safe=':@')}/{version_hash}.json"
                 exists = store.exists(version_path)
                 status = "unchanged" if exists else "new"
                 report.record_version(status)
@@ -308,14 +306,12 @@ def run_au_cdr(
                     store.put_json(version_path, plan)
 
                 finding_data = [finding.to_dict() for finding in findings]
-                report.record_findings(plan.plan_id, finding_data)
+                report.record_findings(plan_id, finding_data)
                 if finding_data and not dry_run:
-                    checks_path = (
-                        f"checks/{quote(plan.plan_id, safe=':@')}/{version_hash}.json"
-                    )
+                    checks_path = f"checks/{quote(plan_id, safe=':@')}/{version_hash}.json"
                     store.put_json(checks_path, finding_data)
                 finding_codes = sorted({finding.code for finding in findings})
-                index_by_id[plan.plan_id] = _index_entry(
+                index_by_id[plan_id] = _index_entry(
                     plan, version_hash, previous, now, finding_codes
                 )
 

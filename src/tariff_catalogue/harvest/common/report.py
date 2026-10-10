@@ -168,12 +168,9 @@ class RunReport:
             )
         durations = data["durations"]
         if durations:
+            lines.extend(["", "### Durations", "", "| Operation | Seconds |", "| --- | ---: |"])
             lines.extend(
-                ["", "### Durations", "", "| Operation | Seconds |", "| --- | ---: |"]
-            )
-            lines.extend(
-                f"| {name} | {seconds:.2f} |"
-                for name, seconds in sorted(durations.items())
+                f"| {name} | {seconds:.2f} |" for name, seconds in sorted(durations.items())
             )
         errors = data["errors"]
         if errors:
@@ -191,8 +188,7 @@ class RunReport:
                 for finding in plan_findings:
                     profile = f" ({finding['profile']})" if "profile" in finding else ""
                     details.append(
-                        f"{finding['code']} [{finding['severity']}]{profile}: "
-                        f"{finding['message']}"
+                        f"{finding['code']} [{finding['severity']}]{profile}: {finding['message']}"
                     )
                 lines.append(f"- `{plan_id}`: {'; '.join(details)}")
         return "\n".join(lines) + "\n"

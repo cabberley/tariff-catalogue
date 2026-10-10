@@ -88,8 +88,7 @@ def _profiles(plan: PlanVersion) -> tuple[_Profile, ...]:
     if plan.commodity != Commodity.ELECTRICITY:
         return ()
     profiles = [
-        _load_profile(name)
-        for name in ("no_solar", "solar_only", "solar_battery", "ev_heavy")
+        _load_profile(name) for name in ("no_solar", "solar_only", "solar_battery", "ev_heavy")
     ]
     registers = {
         component.register.value
@@ -162,9 +161,11 @@ def check_version(
             )
         )
 
-    previous_profiles = {
-        profile.name: profile for profile in _profiles(previous_plan)
-    } if previous_plan is not None and previous_plan.commodity == plan.commodity else {}
+    previous_profiles = (
+        {profile.name: profile for profile in _profiles(previous_plan)}
+        if previous_plan is not None and previous_plan.commodity == plan.commodity
+        else {}
+    )
     for profile in _profiles(plan):
         result = _bill(plan, profile)
         for warning in result.warnings:
