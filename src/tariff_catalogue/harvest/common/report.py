@@ -155,12 +155,9 @@ class RunReport:
             )
         durations = data["durations"]
         if durations:
+            lines.extend(["", "### Durations", "", "| Operation | Seconds |", "| --- | ---: |"])
             lines.extend(
-                ["", "### Durations", "", "| Operation | Seconds |", "| --- | ---: |"]
-            )
-            lines.extend(
-                f"| {name} | {seconds:.2f} |"
-                for name, seconds in sorted(durations.items())
+                f"| {name} | {seconds:.2f} |" for name, seconds in sorted(durations.items())
             )
         errors = data["errors"]
         if errors:

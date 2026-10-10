@@ -184,16 +184,19 @@ def test_cli_reports_one_brand_error_and_continues(tmp_path: Path, monkeypatch, 
                 },
             )
         )
-        assert main(
-            [
-                "harvest",
-                "au-cdr",
-                "--list-only",
-                "--dry-run",
-                "--archive-root",
-                str(tmp_path / "archive"),
-            ]
-        ) == 0
+        assert (
+            main(
+                [
+                    "harvest",
+                    "au-cdr",
+                    "--list-only",
+                    "--dry-run",
+                    "--archive-root",
+                    str(tmp_path / "archive"),
+                ]
+            )
+            == 0
+        )
 
     output = capsys.readouterr().out
     assert "Bad Brand (bad): error" in output

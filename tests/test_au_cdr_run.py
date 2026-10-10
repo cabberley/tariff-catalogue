@@ -84,9 +84,9 @@ def test_run_creates_versions_deduplicates_and_detects_rate_change(tmp_path: Pat
         with PoliteClient(min_interval=0, report=report) as client:
             run_au_cdr(client, store, brands=[BRAND])
             run_au_cdr(client, store, brands=[BRAND])
-            detail["data"]["electricityContract"]["tariffPeriod"][0]["timeOfUseRates"][0][
-                "rates"
-            ][0]["unitPrice"] = "0.38955"
+            detail["data"]["electricityContract"]["tariffPeriod"][0]["timeOfUseRates"][0]["rates"][
+                0
+            ]["unitPrice"] = "0.38955"
             run_au_cdr(client, store, brands=[BRAND])
 
     assert listing_route.call_count == 3

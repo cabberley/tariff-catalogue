@@ -63,24 +63,25 @@ def test_raw_gzip_metadata_and_listing(store) -> None:
     assert metadata["url"] == "https://example.com/plan/1"
     assert metadata["sha256"] == hashlib.sha256(payload).hexdigest()
     assert list(store.list("raw/au_cdr/")) == [path, f"{path}.meta.json"]
-    assert store.put_raw(
-        "au_cdr",
-        "plan/1",
-        payload,
-        {
-            "url": "https://example.com/plan/1",
-            "status": 200,
-            "headers": {"content-type": "application/json"},
-            "retrieved_at": retrieved_at,
-        },
-    ) == path
+    assert (
+        store.put_raw(
+            "au_cdr",
+            "plan/1",
+            payload,
+            {
+                "url": "https://example.com/plan/1",
+                "status": 200,
+                "headers": {"content-type": "application/json"},
+                "retrieved_at": retrieved_at,
+            },
+        )
+        == path
+    )
 
 
 def test_append_only_raw_detects_collision(store) -> None:
     payload = b"first"
-    path = store.put_raw(
-        "feed", "key", payload, {"retrieved_at": "2026-10-09T00:00:00Z"}
-    )
+    path = store.put_raw("feed", "key", payload, {"retrieved_at": "2026-10-09T00:00:00Z"})
     with pytest.raises(ArchiveConflictError):
         store.put_json(path, {"not": "gzip"})
 

@@ -9,11 +9,7 @@ def test_lint_workflow_uses_project_dependencies(job: str) -> None:
     root = Path(__file__).resolve().parents[1]
     workflow = yaml.safe_load((root / ".github" / "workflows" / "lint.yml").read_text())
     steps = workflow["jobs"][job]["steps"]
-    setup = next(
-        step
-        for step in steps
-        if step.get("uses", "").startswith("actions/setup-python@")
-    )
+    setup = next(step for step in steps if step.get("uses", "").startswith("actions/setup-python@"))
     install = next(step for step in steps if "pip install" in step.get("run", ""))
 
     assert setup["with"]["cache-dependency-path"] == "pyproject.toml"
