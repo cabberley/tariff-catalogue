@@ -44,6 +44,7 @@ def _listing(*plan_ids: str) -> dict:
 
 
 def test_fetch_detail_falls_back_after_406() -> None:
+    report = RunReport()
     with respx.mock:
         route = respx.get(DETAIL_URL).mock(
             side_effect=[
@@ -51,11 +52,13 @@ def test_fetch_detail_falls_back_after_406() -> None:
                 httpx.Response(200, json={"data": {"planId": DETAIL_PLAN_ID}}),
             ]
         )
-        with PoliteClient(min_interval=0) as client:
+        with PoliteClient(min_interval=0, report=report) as client:
             data, _metadata = fetch_detail(client, BRAND, DETAIL_PLAN_ID)
 
     assert [call.request.headers["x-v"] for call in route.calls] == ["3", "2"]
     assert data["data"]["planId"] == DETAIL_PLAN_ID
+    assert report.failures == 0
+    assert report.errors == []
 
 
 def test_fetch_detail_falls_back_after_cdr_version_error() -> None:

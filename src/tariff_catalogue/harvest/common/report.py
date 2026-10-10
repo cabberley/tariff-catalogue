@@ -58,6 +58,15 @@ class RunReport:
             self.failures += 1
             self.errors.append(str(error))
 
+    def clear_failure(self, error: Exception | str) -> None:
+        with self._lock:
+            message = str(error)
+            try:
+                self.errors.remove(message)
+            except ValueError:
+                return
+            self.failures -= 1
+
     def record_warning(self, warning: str) -> None:
         with self._lock:
             self.warnings.append(warning)
