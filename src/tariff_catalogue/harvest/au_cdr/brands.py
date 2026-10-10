@@ -46,9 +46,7 @@ def _summaries(payload: Any) -> list[dict[str, Any]]:
     return summaries
 
 
-def discover_brands(
-    client: PoliteClient, report: RunReport | None = None
-) -> list[Brand]:
+def discover_brands(client: PoliteClient, report: RunReport | None = None) -> list[Brand]:
     """Return active brands, following CDR Register pagination links."""
     brands: list[Brand] = []
     next_url: str | None = BRANDS_URL
@@ -64,9 +62,7 @@ def discover_brands(
             status = str(
                 summary.get("dataHolderBrandStatus") or summary.get("status") or ""
             ).strip()
-            base_uri_field = (
-                "productBaseUri" if summary.get("productBaseUri") else "publicBaseUri"
-            )
+            base_uri_field = "productBaseUri" if summary.get("productBaseUri") else "publicBaseUri"
             base_uri = summary.get(base_uri_field)
             if not isinstance(brand_id, str) or not brand_id:
                 raise CDRResponseError("CDR Register brand is missing its ID or name")
@@ -92,8 +88,6 @@ def discover_brands(
         links = payload.get("links", {}) if isinstance(payload, dict) else {}
         next_link = links.get("next") if isinstance(links, dict) else None
         next_url = (
-            urljoin(next_url, next_link)
-            if isinstance(next_link, str) and next_link
-            else None
+            urljoin(next_url, next_link) if isinstance(next_link, str) and next_link else None
         )
     return brands

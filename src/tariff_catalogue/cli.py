@@ -120,9 +120,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     archive_ls = commands.add_parser("archive-ls", help="List files in the local archive.")
     archive_ls.add_argument("prefix", nargs="?", default="")
-    archive_ls.add_argument(
-        "--root", type=Path, default=Path(os.getenv("ARCHIVE_ROOT", "archive"))
-    )
+    archive_ls.add_argument("--root", type=Path, default=Path(os.getenv("ARCHIVE_ROOT", "archive")))
     archive_ls.set_defaults(handler=_archive_ls)
 
     return parser

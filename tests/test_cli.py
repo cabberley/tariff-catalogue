@@ -33,16 +33,19 @@ def test_publish_cli_builds_locally_in_dry_run(
 ) -> None:
     output = tmp_path / "dist"
 
-    assert main(
-        [
-            "publish",
-            "--dry-run",
-            "--out",
-            str(output),
-            "--archive-root",
-            str(tmp_path / "archive"),
-        ]
-    ) == 0
+    assert (
+        main(
+            [
+                "publish",
+                "--dry-run",
+                "--out",
+                str(output),
+                "--archive-root",
+                str(tmp_path / "archive"),
+            ]
+        )
+        == 0
+    )
 
     assert json.loads((output / "v1" / "index.json").read_text())["schema_version"] == "v1"
     assert "Built 0 plans" in capsys.readouterr().out
