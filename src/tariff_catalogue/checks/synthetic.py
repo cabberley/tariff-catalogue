@@ -7,7 +7,7 @@ from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from functools import cache
-from pathlib import Path
+from importlib.resources import files
 
 from tariff_core import (
     Bill,
@@ -23,7 +23,6 @@ from tariff_core import (
     bill,
 )
 
-PROFILE_DIR = Path(__file__).parents[3] / "tests" / "profiles"
 GAS_HEATING_VALUE = Decimal("38.6")
 GAS_CORRECTION_FACTOR = Decimal("0.98")
 
@@ -53,12 +52,12 @@ class _Profile:
 
 @cache
 def _load_profile(name: str) -> _Profile:
-    path = PROFILE_DIR / f"{name}.csv"
+    path = files("tariff_catalogue.checks").joinpath("profiles", f"{name}.csv")
     unit = "m3" if name == "gas_household" else "kWh"
     commodity = Commodity.GAS if name == "gas_household" else Commodity.ELECTRICITY
     duration = timedelta(days=1) if commodity == Commodity.GAS else timedelta(minutes=30)
     intervals: list[Interval] = []
-    with path.open(encoding="utf-8", newline="") as file:
+    with path.open(encoding="utf-8") as file:
         for row in csv.DictReader(file):
             end = datetime.fromisoformat(row["interval_end"])
             intervals.append(
@@ -96,8 +95,20 @@ def _profiles(plan: PlanVersion) -> tuple[_Profile, ...]:
         if isinstance(component, (FixedComponent, UsageComponent))
         and component.register is not None
     }
-    if "controlled_load_1" in registers:
-        profiles.append(_load_profile("controlled_load"))
+    for register in sorted(registers & {"controlled_load_1", "controlled_load_2"}):
+        profile = _load_profile("controlled_load")
+        profiles.append(
+            replace(
+                profile,
+                name=register,
+                intervals=tuple(
+                    replace(interval, register=register)
+                    if interval.register == "controlled_load_1"
+                    else interval
+                    for interval in profile.intervals
+                ),
+            )
+        )
     return tuple(profiles)
 
 

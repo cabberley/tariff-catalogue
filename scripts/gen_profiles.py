@@ -12,7 +12,7 @@ from zoneinfo import ZoneInfo
 SEED = 20261009
 YEAR = 2025
 ZONE = ZoneInfo("Australia/Brisbane")
-OUTPUT = Path(__file__).parents[1] / "tests" / "profiles"
+OUTPUT = Path(__file__).parents[1] / "src" / "tariff_catalogue" / "checks" / "profiles"
 HEADER = ("interval_end", "register", "import_kwh", "export_kwh")
 
 
@@ -128,7 +128,7 @@ def _controlled_profile(
 def _gas_profile() -> list[tuple[datetime, str, float, float]]:
     days = [date(YEAR, 1, 1) + timedelta(days=index) for index in range(365)]
     weighted = [
-        0.35 + 1.65 * (0.5 - 0.5 * math.cos(2 * math.pi * (day.timetuple().tm_yday - 200) / 365))
+        0.35 + 1.65 * (0.5 + 0.5 * math.cos(2 * math.pi * (day.timetuple().tm_yday - 200) / 365))
         for day in days
     ]
     m3_per_mj = 1 / (38.6 * 0.98)
