@@ -204,6 +204,8 @@ def test_retry_reuses_an_existing_submission_branch(tmp_path: Path, monkeypatch)
         if arguments[:4] == ["git", "checkout", "-b", "community/issue-10"]:
             destination.parent.mkdir(parents=True)
             destination.write_text(plan_content, encoding="utf-8")
+        if arguments[:3] == ["git", "diff", "--name-only"]:
+            return result.file_path.as_posix()
         if arguments[:3] == ["gh", "pr", "create"]:
             return "https://github.com/cabberley/tariff-catalogue/pull/11"
         return ""

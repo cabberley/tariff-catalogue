@@ -506,6 +506,19 @@ def _process_event(root: Path, event_path: Path, base_branch: str) -> int:
     if remote_branch:
         _run(["git", "fetch", "origin", branch], root)
         _run(["git", "checkout", "-b", branch, "FETCH_HEAD"], root)
+        changed_files = _run(
+            ["git", "diff", "--name-only", f"origin/{base_branch}...HEAD"], root
+        ).splitlines()
+        if changed_files != [result.file_path.as_posix()]:
+            _run(
+                [
+                    *gh,
+                    "A previous submission branch contains unexpected files; a maintainer must "
+                    "reconcile it before another PR can be opened.",
+                ],
+                root,
+            )
+            return 0
         if not destination.is_file() or destination.read_text(encoding="utf-8") != plan_content:
             _run(
                 [
