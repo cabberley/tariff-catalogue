@@ -61,13 +61,16 @@ def build_diff_report(old: dict[str, Any], new: dict[str, Any]) -> str:
         else:
             change = f"{(current - previous) / abs(previous) * 100:.2f}%"
         rows.append(f"| {name} | {old_text} | {new_text} | {change} |")
-    return "\n".join(
-        [
-            "| Component | Old rate | New rate | % change |",
-            "| --- | ---: | ---: | ---: |",
-            *(rows or ["| No rate changes | — | — | — |"]),
-        ]
-    ) + "\n"
+    return (
+        "\n".join(
+            [
+                "| Component | Old rate | New rate | % change |",
+                "| --- | ---: | ---: | ---: |",
+                *(rows or ["| No rate changes | — | — | — |"]),
+            ]
+        )
+        + "\n"
+    )
 
 
 def _read_plan(path: Path) -> dict[str, Any]:

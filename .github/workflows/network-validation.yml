@@ -10,7 +10,7 @@ on:
 
 permissions:
   contents: read
-  pull-requests: write
+  issues: write
 
 jobs:
   validate:
@@ -27,11 +27,9 @@ jobs:
       - run: python -m pip install -e .
       - name: Validate curated network tariffs
         run: PYTHONPATH=src python -m tariff_catalogue.review.network_validation
-      - name: Comment rate diff
+      - name: Generate rate diff report
         env:
-          GH_TOKEN: ${{ github.token }}
           BASE_REF: ${{ github.base_ref }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           git fetch origin "$BASE_REF"
           : > /tmp/network-diff-report.md
@@ -52,6 +50,16 @@ jobs:
             cat "$report_file" >> /tmp/network-diff-report.md
             rm -f "$old_file" "$new_file" "$report_file"
           done < <(git diff --name-only "origin/$BASE_REF...HEAD" -- network/)
-          if [[ -s /tmp/network-diff-report.md ]]; then
-            gh pr comment "$PR_NUMBER" --body-file /tmp/network-diff-report.md
-          fi
+      - name: Post rate diff comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('node:fs');
+            const body = fs.readFileSync('/tmp/network-diff-report.md', 'utf8');
+            if (!body.trim()) return;
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body,
+            });

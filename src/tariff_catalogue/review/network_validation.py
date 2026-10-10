@@ -49,7 +49,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("files", nargs="*", type=Path)
     args = parser.parse_args(argv)
-    files = args.files or sorted(Path("network").rglob("*.yaml"))
+    files = args.files or sorted(Path("network/au").rglob("*.yaml"))
     errors = [error for path in files for error in validate_network_file(path)]
     if errors:
         print("\n".join(errors))

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib
 import os
 import random
 import time
@@ -19,7 +20,9 @@ import yaml
 from tariff_catalogue.harvest.common.archive import ArchiveStore, LocalArchiveStore, S3ArchiveStore
 
 STATE_PATH = "state/network_watch.json"
-USER_AGENT = "tariff-catalogue network document watcher (https://github.com/cabberley/tariff-catalogue)"
+USER_AGENT = (
+    "tariff-catalogue network document watcher (https://github.com/cabberley/tariff-catalogue)"
+)
 RETRY_STATUSES = {429, 500, 502, 503, 504}
 
 
@@ -82,19 +85,20 @@ def _fetch_http(client: httpx.Client, url: str) -> tuple[bytes, str]:
 
 def _fetch_browser(url: str) -> tuple[bytes, str]:
     try:
-        from playwright.sync_api import Error as PlaywrightError
-        from playwright.sync_api import sync_playwright
+        playwright_api = importlib.import_module("playwright.sync_api")
     except ImportError as error:
-        raise RuntimeError("Install the network-watch extra to fetch browser-rendered sources") from error
+        raise RuntimeError(
+            "Install the network-watch extra to fetch browser-rendered sources"
+        ) from error
 
-    with sync_playwright() as playwright:
+    with playwright_api.sync_playwright() as playwright:
         browser = playwright.chromium.launch()
         try:
             page = browser.new_page(user_agent=USER_AGENT)
             for attempt in range(6):
                 try:
                     response = page.goto(url, wait_until="networkidle", timeout=60_000)
-                except PlaywrightError:
+                except playwright_api.Error:
                     if attempt == 5:
                         raise
                     time.sleep(_retry_delay(attempt))
@@ -113,9 +117,15 @@ def _fetch_browser(url: str) -> tuple[bytes, str]:
                         request=httpx.Request("GET", url),
                         response=httpx.Response(response.status),
                     )
+                content_type = response.headers.get("content-type", "application/octet-stream")
+                content = (
+                    page.content().encode("utf-8")
+                    if "text/html" in content_type
+                    else response.body()
+                )
                 return (
-                    response.body(),
-                    response.headers.get("content-type", "application/octet-stream"),
+                    content,
+                    content_type,
                 )
             raise RuntimeError(f"Browser retries exhausted for {url}")
         finally:
@@ -130,8 +140,10 @@ def _issue_body(
     new_archive_path: str,
 ) -> str:
     run_url = ""
-    if os.getenv("GITHUB_SERVER_URL") and os.getenv("GITHUB_REPOSITORY") and os.getenv(
-        "GITHUB_RUN_ID"
+    if (
+        os.getenv("GITHUB_SERVER_URL")
+        and os.getenv("GITHUB_REPOSITORY")
+        and os.getenv("GITHUB_RUN_ID")
     ):
         run_url = (
             f"{os.environ['GITHUB_SERVER_URL']}/{os.environ['GITHUB_REPOSITORY']}"
@@ -190,9 +202,7 @@ def run_watch(
             key = hashlib.sha256(document["url"].encode("utf-8")).hexdigest()
             previous = tracked.get(key, {})
             old_hash = previous.get("sha256") if isinstance(previous, dict) else None
-            old_archive_path = (
-                previous.get("archive_path") if isinstance(previous, dict) else None
-            )
+            old_archive_path = previous.get("archive_path") if isinstance(previous, dict) else None
             archive_path = old_archive_path
             if old_hash != digest:
                 archive_path = archive.put_raw(
@@ -247,7 +257,9 @@ def _create_github_issue(title: str, body: str, client: httpx.Client) -> None:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--sources", type=Path, default=Path("network/sources.yaml"))
-    parser.add_argument("--archive-root", type=Path, default=Path(os.getenv("ARCHIVE_ROOT", "archive")))
+    parser.add_argument(
+        "--archive-root", type=Path, default=Path(os.getenv("ARCHIVE_ROOT", "archive"))
+    )
     args = parser.parse_args(argv)
     archive: ArchiveStore
     if os.getenv("R2_BUCKET") or os.getenv("R2_BUCKET_NAME"):
@@ -259,15 +271,18 @@ def main(argv: list[str] | None = None) -> int:
     token = os.getenv("GITHUB_TOKEN")
     if not token:
         parser.error("GITHUB_TOKEN is required to open change issues")
-    with httpx.Client(
-        follow_redirects=True,
-        timeout=30.0,
-        headers={"User-Agent": USER_AGENT, "Authorization": "Bearer " + token},
-    ) as github_client, httpx.Client(
-        follow_redirects=True,
-        timeout=30.0,
-        headers={"User-Agent": USER_AGENT},
-    ) as fetch_client:
+    with (
+        httpx.Client(
+            follow_redirects=True,
+            timeout=30.0,
+            headers={"User-Agent": USER_AGENT, "Authorization": "Bearer " + token},
+        ) as github_client,
+        httpx.Client(
+            follow_redirects=True,
+            timeout=30.0,
+            headers={"User-Agent": USER_AGENT},
+        ) as fetch_client,
+    ):
         changes = run_watch(
             load_sources(args.sources),
             archive,

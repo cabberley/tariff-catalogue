@@ -179,7 +179,8 @@ def _add_network_plans(
     summaries: dict[str, dict[str, Any]] = {}
     latest_effective: dict[str, str] = {}
     root = Path("network")
-    for path in sorted([*root.rglob("*.yaml"), *root.rglob("*.yml")]):
+    tariff_root = root / "au"
+    for path in sorted([*tariff_root.rglob("*.yaml"), *tariff_root.rglob("*.yml")]):
         errors = validate_network_file(path)
         if errors:
             raise ValueError("\n".join(errors))
@@ -203,25 +204,25 @@ def _add_network_plans(
         region = plan_data.get("region", {})
         if not isinstance(region, dict):
             region = {}
-        summary = {
-                "plan_id": plan_id,
-                "display_name": plan.display_name,
-                "supplier": plan_data.get("supplier"),
-                "commodity": plan.commodity.value,
-                "customer_type": plan.customer_type.value,
-                "currency": plan.currency,
-                "pricing_model": plan.pricing_model.value,
-                "latest_version": version_hash,
-                "version_hash": version_hash,
-                "status": "current",
-                "partial": plan.partial,
-                "confidence": plan.confidence.value if plan.confidence else None,
-                "equivalence_group": None,
-                "finding_codes": [],
-                "equivalent_count": 1,
-                "_country": str(region.get("country", "AU")).casefold(),
-                "_region": str(region.get("network", "global")).casefold(),
-            }
+        summary: dict[str, Any] = {
+            "plan_id": plan_id,
+            "display_name": plan.display_name,
+            "supplier": plan_data.get("supplier"),
+            "commodity": plan.commodity.value,
+            "customer_type": plan.customer_type.value,
+            "currency": plan.currency,
+            "pricing_model": plan.pricing_model.value,
+            "latest_version": version_hash,
+            "version_hash": version_hash,
+            "status": "current",
+            "partial": plan.partial,
+            "confidence": plan.confidence.value if plan.confidence else None,
+            "equivalence_group": None,
+            "finding_codes": [],
+            "equivalent_count": 1,
+            "_country": str(region.get("country", "AU")).casefold(),
+            "_region": str(region.get("network", "global")).casefold(),
+        }
         effective_from = str(effective.get("from", "")) if isinstance(effective, dict) else ""
         if plan_id not in summaries or effective_from >= latest_effective[plan_id]:
             summaries[plan_id] = summary
@@ -238,7 +239,9 @@ def _add_network_plans(
         copied_versions.append((plan_id, version_hash, version_bytes))
         relative = path.relative_to(root)
         if len(relative.parts) != 5 or relative.parts[0] != "au":
-            raise ValueError(f"{path}: network path must be network/au/{'{dnsp}/{year}/{zone}/{code}.yaml'}")
+            raise ValueError(
+                f"{path}: network path must be network/au/{'{dnsp}/{year}/{zone}/{code}.yaml'}"
+            )
         output_path = Path("au/network", *relative.parts[1:]).with_suffix(".json")
         network_files.append((output_path.as_posix(), version_bytes))
     published.extend(summaries.values())
