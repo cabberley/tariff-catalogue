@@ -45,6 +45,7 @@ def _fixture_archive(root: Path) -> tuple[LocalArchiveStore, str, str]:
                 "region": plan_data["region"],
                 "partial": plan.partial,
                 "equivalence_group": "same-pricing",
+                "finding_codes": ["example_finding"],
             }
         ],
     )
@@ -102,7 +103,26 @@ def test_build_is_deterministic_and_keeps_withdrawn_versions_reachable(tmp_path:
     region_index = json.loads(first[region_key])
     assert region_index["schema_version"] == "v1"
     assert region_index["plans"][0]["status"] == "withdrawn"
+    assert region_index["plans"][0]["finding_codes"] == ["example_finding"]
     assert json.loads(first["v1/au/index.json"])["schema_version"] == "v1"
+
+
+def test_build_applies_index_confidence_without_rewriting_archived_version(
+    tmp_path: Path,
+) -> None:
+    store, plan_id, version_hash = _fixture_archive(tmp_path / "archive")
+    entry = store.get_json("index/au_cdr/plans.json")[0]
+    entry["confidence"] = "medium"
+    store.put_json("index/au_cdr/plans.json", [entry])
+    archived_path = f"versions/{quote(plan_id, safe=':@')}/{version_hash}.json"
+    archived_bytes = store.get(archived_path)
+
+    output = tmp_path / "dist"
+    build(store, output)
+
+    published_path = output / "v1" / "plans" / quote(plan_id, safe="") / f"{version_hash}.json"
+    assert json.loads(published_path.read_text())["confidence"] == "medium"
+    assert store.get(archived_path) == archived_bytes
 
 
 def test_upload_sets_cache_headers_and_uploads_versions_before_indexes(tmp_path: Path) -> None:

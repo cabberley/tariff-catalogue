@@ -5,12 +5,14 @@ from pathlib import Path
 import httpx
 import respx
 
+from tariff_catalogue.checks.synthetic import CheckFinding
 from tariff_catalogue.harvest.au_cdr.brands import Brand
 from tariff_catalogue.harvest.au_cdr.detail import fetch_detail
 from tariff_catalogue.harvest.au_cdr.run import INDEX_PATH, run_au_cdr
 from tariff_catalogue.harvest.common.archive import LocalArchiveStore
 from tariff_catalogue.harvest.common.http import PoliteClient
 from tariff_catalogue.harvest.common.report import RunReport
+from tariff_catalogue.publish.build import build
 
 FIXTURES = Path(__file__).parent / "fixtures" / "cdr" / "detail"
 ORIGIN_BASE = "https://cdr.energymadeeasy.gov.au/origin"
@@ -127,6 +129,37 @@ def test_invalid_plan_is_archived_but_not_versioned(tmp_path: Path, monkeypatch)
     assert report.brands["origin"]["invalid"] == 1
     assert not list(store.list("versions/"))
     assert list(store.list("raw/au_cdr_detail/"))
+
+
+def test_synthetic_findings_are_stored_reported_and_published(tmp_path: Path, monkeypatch) -> None:
+    from tariff_catalogue.harvest.au_cdr import run as run_module
+
+    store = LocalArchiveStore(tmp_path / "archive")
+    finding = CheckFinding("test_finding", "review", "Fixture bill needs review.")
+    monkeypatch.setattr(run_module, "check_version", lambda _plan, _previous: [finding])
+    report = RunReport()
+    with respx.mock:
+        respx.get(url__regex=rf"{PLANS_URL}\?.*").mock(
+            return_value=httpx.Response(200, json=_listing(DETAIL_PLAN_ID))
+        )
+        respx.get(DETAIL_URL).mock(return_value=httpx.Response(200, json=_detail()))
+        with PoliteClient(min_interval=0, report=report) as client:
+            run_au_cdr(client, store, brands=[BRAND])
+
+    entry = store.get_json(INDEX_PATH)[0]
+    version_path = next(store.list("versions/"))
+    version = store.get_json(version_path)
+    check_path = next(store.list("checks/"))
+    assert entry["finding_codes"] == ["test_finding"]
+    assert version["confidence"] == "medium"
+    assert store.get_json(check_path) == [finding.to_dict()]
+    assert report.findings[entry["plan_id"]] == [finding.to_dict()]
+    assert "### Synthetic bill findings" in report.to_markdown()
+
+    output = tmp_path / "dist"
+    build(store, output)
+    region_index = output / "v1" / "au" / "ergon" / "index.json"
+    assert json.loads(region_index.read_text())["plans"][0]["finding_codes"] == ["test_finding"]
 
 
 def test_equivalence_group_ignores_display_name(tmp_path: Path) -> None:

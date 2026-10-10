@@ -22,6 +22,7 @@ class _ReportData(TypedDict):
     durations: dict[str, float]
     errors: list[str]
     warnings: list[str]
+    findings: dict[str, list[dict[str, str]]]
 
 
 @dataclass
@@ -37,6 +38,7 @@ class RunReport:
     durations: dict[str, float] = field(default_factory=dict)
     errors: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    findings: dict[str, list[dict[str, str]]] = field(default_factory=dict)
     _lock: Lock = field(default_factory=Lock, repr=False, compare=False)
 
     def record_request(self) -> None:
@@ -55,6 +57,13 @@ class RunReport:
     def record_warning(self, warning: str) -> None:
         with self._lock:
             self.warnings.append(warning)
+
+    def record_findings(self, plan_id: str, findings: list[dict[str, str]]) -> None:
+        with self._lock:
+            if findings:
+                self.findings[plan_id] = [dict(finding) for finding in findings]
+            else:
+                self.findings.pop(plan_id, None)
 
     def record_version(self, status: str) -> None:
         if status not in {"new", "unchanged", "partial"}:
@@ -117,6 +126,10 @@ class RunReport:
                 "durations": dict(self.durations),
                 "errors": list(self.errors),
                 "warnings": list(self.warnings),
+                "findings": {
+                    plan_id: [dict(finding) for finding in findings]
+                    for plan_id, findings in self.findings.items()
+                },
             }
 
     def to_json(self) -> str:
@@ -167,6 +180,17 @@ class RunReport:
         if warnings:
             lines.extend(["", "### Warnings", ""])
             lines.extend(f"- {warning}" for warning in warnings)
+        findings = data["findings"]
+        if findings:
+            lines.extend(["", "### Synthetic bill findings", ""])
+            for plan_id, plan_findings in sorted(findings.items()):
+                details = []
+                for finding in plan_findings:
+                    profile = f" ({finding['profile']})" if "profile" in finding else ""
+                    details.append(
+                        f"{finding['code']} [{finding['severity']}]{profile}: {finding['message']}"
+                    )
+                lines.append(f"- `{plan_id}`: {'; '.join(details)}")
         return "\n".join(lines) + "\n"
 
     def write_summary(self, path: str | Path | None = None) -> bool:

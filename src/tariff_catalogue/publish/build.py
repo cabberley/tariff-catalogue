@@ -123,6 +123,10 @@ def build(store: ArchiveStore, out_dir: Path) -> BuildReport:
         country = str(country).lower() if country else "global"
         network = region.get("network")
         region_name = str(network).lower() if network else "global"
+        confidence = entry.get("confidence", latest_data.get("confidence"))
+        if confidence is not None and latest_data.get("confidence") != confidence:
+            latest_data["confidence"] = confidence
+            latest_bytes = _json_bytes(latest_data)
         summary = {
             "plan_id": plan_id,
             "display_name": entry.get("display_name", latest_data.get("display_name")),
@@ -134,8 +138,9 @@ def build(store: ArchiveStore, out_dir: Path) -> BuildReport:
             "version_hash": latest_hash,
             "status": entry["status"],
             "partial": bool(entry.get("partial", latest_data.get("partial", False))),
-            "confidence": latest_data.get("confidence"),
+            "confidence": confidence,
             "equivalence_group": entry.get("equivalence_group"),
+            "finding_codes": entry.get("finding_codes", []),
             "equivalent_count": 1,
             "_country": country,
             "_region": region_name,
