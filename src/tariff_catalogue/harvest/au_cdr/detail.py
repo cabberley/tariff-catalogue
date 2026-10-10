@@ -35,6 +35,7 @@ def fetch_detail(
             payload, metadata = client.get_json(url, headers={"x-v": version})
         except HarvestHTTPError as error:
             if error.status == 406 and version != "1":
+                client.clear_failure(error)
                 continue
             raise
         if _is_version_error(payload):

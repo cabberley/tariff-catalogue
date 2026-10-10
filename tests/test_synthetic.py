@@ -133,6 +133,6 @@ def test_each_controlled_load_register_is_billed_and_compared(registers) -> None
     for profile in profiles[4:]:
         assert {interval.register for interval in profile.intervals} == {"general", profile.name}
     findings = check_version(current, previous)
-    assert {
-        finding.profile for finding in findings if finding.code == "annual_bill_change"
-    } == set(registers)
+    assert {finding.profile for finding in findings if finding.code == "annual_bill_change"} == set(
+        registers
+    )

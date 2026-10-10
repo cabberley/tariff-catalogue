@@ -44,6 +44,7 @@ def _listing(*plan_ids: str) -> dict:
 
 
 def test_fetch_detail_falls_back_after_406() -> None:
+    report = RunReport()
     with respx.mock:
         route = respx.get(DETAIL_URL).mock(
             side_effect=[
@@ -51,11 +52,13 @@ def test_fetch_detail_falls_back_after_406() -> None:
                 httpx.Response(200, json={"data": {"planId": DETAIL_PLAN_ID}}),
             ]
         )
-        with PoliteClient(min_interval=0) as client:
+        with PoliteClient(min_interval=0, report=report) as client:
             data, _metadata = fetch_detail(client, BRAND, DETAIL_PLAN_ID)
 
     assert [call.request.headers["x-v"] for call in route.calls] == ["3", "2"]
     assert data["data"]["planId"] == DETAIL_PLAN_ID
+    assert report.failures == 0
+    assert report.errors == []
 
 
 def test_fetch_detail_falls_back_after_cdr_version_error() -> None:
@@ -129,6 +132,21 @@ def test_invalid_plan_is_archived_but_not_versioned(tmp_path: Path, monkeypatch)
     assert report.brands["origin"]["invalid"] == 1
     assert not list(store.list("versions/"))
     assert list(store.list("raw/au_cdr_detail/"))
+
+
+def test_run_counts_detail_fetch_failures(tmp_path: Path) -> None:
+    store = LocalArchiveStore(tmp_path / "archive")
+    report = RunReport()
+    with respx.mock:
+        respx.get(url__regex=rf"{PLANS_URL}\?.*").mock(
+            return_value=httpx.Response(200, json=_listing(DETAIL_PLAN_ID))
+        )
+        respx.get(DETAIL_URL).mock(return_value=httpx.Response(404))
+        with PoliteClient(min_interval=0, report=report) as client:
+            run_au_cdr(client, store, brands=[BRAND])
+
+    assert report.detail_failures == 1
+    assert report.failures == 1
 
 
 def test_synthetic_findings_are_stored_reported_and_published(tmp_path: Path, monkeypatch) -> None:

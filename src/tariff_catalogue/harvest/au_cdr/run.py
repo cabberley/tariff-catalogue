@@ -243,6 +243,7 @@ def run_au_cdr(
                 try:
                     fetches.append(future.result())
                 except Exception as error:
+                    report.detail_failures += 1
                     if (
                         isinstance(error, CDRResponseError)
                         or not isinstance(
@@ -306,7 +307,11 @@ def run_au_cdr(
                     store.put_json(version_path, plan)
 
                 finding_data = [finding.to_dict() for finding in findings]
-                report.record_findings(plan_id, finding_data)
+                report.record_findings(
+                    plan_id,
+                    finding_data,
+                    f"v1/plans/{quote(plan_id, safe='')}/{version_hash}.json",
+                )
                 if finding_data and not dry_run:
                     checks_path = f"checks/{quote(plan_id, safe=':@')}/{version_hash}.json"
                     store.put_json(checks_path, finding_data)

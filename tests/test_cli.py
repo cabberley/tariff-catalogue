@@ -28,6 +28,28 @@ def test_au_cdr_cli_accepts_brand_full_and_dry_run_flags() -> None:
     assert args.dry_run
 
 
+def test_au_cdr_cli_writes_json_report_and_step_summary(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from tariff_catalogue import cli
+
+    report_path = tmp_path / "report.json"
+    summary_path = tmp_path / "summary.md"
+
+    def record_version(client, _archive, **_kwargs) -> None:
+        client._report.record_version("new")
+
+    monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(summary_path))
+    monkeypatch.setattr(cli, "run_au_cdr", record_version)
+
+    assert main(["harvest", "au-cdr", "--dry-run", "--report", str(report_path)]) == 0
+
+    report = json.loads(report_path.read_text())
+    assert report["new_versions"] == 1
+    assert report["detail_failures"] == 0
+    assert "## Harvest run summary" in summary_path.read_text()
+
+
 def test_publish_cli_builds_locally_in_dry_run(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

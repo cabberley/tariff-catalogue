@@ -32,3 +32,14 @@ jobs:
           tail -n +3 docs/schema.md > /tmp/catalogue-schema.md
           cp /tmp/tariff-core-schema.md /tmp/upstream-schema.md
           diff --unified /tmp/upstream-schema.md /tmp/catalogue-schema.md
+
+  actionlint:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+      - run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.7

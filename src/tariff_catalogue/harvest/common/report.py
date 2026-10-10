@@ -14,6 +14,7 @@ class _ReportData(TypedDict):
     requests: int
     retries: int
     failures: int
+    detail_failures: int
     new_versions: int
     unchanged: int
     partial: int
@@ -23,6 +24,7 @@ class _ReportData(TypedDict):
     errors: list[str]
     warnings: list[str]
     findings: dict[str, list[dict[str, str]]]
+    finding_versions: dict[str, str]
 
 
 @dataclass
@@ -30,6 +32,7 @@ class RunReport:
     requests: int = 0
     retries: int = 0
     failures: int = 0
+    detail_failures: int = 0
     new_versions: int = 0
     unchanged: int = 0
     partial: int = 0
@@ -39,6 +42,7 @@ class RunReport:
     errors: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     findings: dict[str, list[dict[str, str]]] = field(default_factory=dict)
+    finding_versions: dict[str, str] = field(default_factory=dict)
     _lock: Lock = field(default_factory=Lock, repr=False, compare=False)
 
     def record_request(self) -> None:
@@ -54,16 +58,30 @@ class RunReport:
             self.failures += 1
             self.errors.append(str(error))
 
+    def clear_failure(self, error: Exception | str) -> None:
+        with self._lock:
+            message = str(error)
+            try:
+                self.errors.remove(message)
+            except ValueError:
+                return
+            self.failures -= 1
+
     def record_warning(self, warning: str) -> None:
         with self._lock:
             self.warnings.append(warning)
 
-    def record_findings(self, plan_id: str, findings: list[dict[str, str]]) -> None:
+    def record_findings(
+        self, plan_id: str, findings: list[dict[str, str]], version_path: str | None = None
+    ) -> None:
         with self._lock:
             if findings:
                 self.findings[plan_id] = [dict(finding) for finding in findings]
+                if version_path is not None:
+                    self.finding_versions[plan_id] = version_path
             else:
                 self.findings.pop(plan_id, None)
+                self.finding_versions.pop(plan_id, None)
 
     def record_version(self, status: str) -> None:
         if status not in {"new", "unchanged", "partial"}:
@@ -118,6 +136,7 @@ class RunReport:
                 "requests": self.requests,
                 "retries": self.retries,
                 "failures": self.failures,
+                "detail_failures": self.detail_failures,
                 "new_versions": self.new_versions,
                 "unchanged": self.unchanged,
                 "partial": self.partial,
@@ -130,6 +149,7 @@ class RunReport:
                     plan_id: [dict(finding) for finding in findings]
                     for plan_id, findings in self.findings.items()
                 },
+                "finding_versions": dict(self.finding_versions),
             }
 
     def to_json(self) -> str:
@@ -145,6 +165,7 @@ class RunReport:
             f"| Requests | {data['requests']} |",
             f"| Retries | {data['retries']} |",
             f"| Failures | {data['failures']} |",
+            f"| Detail fetch failures | {data['detail_failures']} |",
             f"| New versions | {data['new_versions']} |",
             f"| Unchanged | {data['unchanged']} |",
             f"| Partial | {data['partial']} |",

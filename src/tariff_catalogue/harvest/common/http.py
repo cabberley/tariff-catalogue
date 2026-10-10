@@ -186,6 +186,10 @@ class PoliteClient:
         if self._report is not None:
             self._report.record_failure(error)
 
+    def clear_failure(self, error: Exception | str) -> None:
+        if self._report is not None:
+            self._report.clear_failure(error)
+
 
 class _RequestSlot:
     def __init__(
