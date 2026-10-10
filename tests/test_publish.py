@@ -4,6 +4,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 import boto3
+import pytest
 import yaml
 from moto import mock_aws
 from tariff_core import content_hash, from_cdr, parse_plan, to_dict, version_id
@@ -171,8 +172,20 @@ def test_build_publishes_community_plans_by_country_and_region(tmp_path: Path, m
     region_index = json.loads((tmp_path / "dist/v1/au/global/index.json").read_text())
     assert region_index["plans"][0]["plan_id"] == "au:community:example-variable"
     assert region_index["plans"][0]["confidence"] == "unverified"
+    assert region_index["plans"][0]["currency"] == "AUD"
     plan_index_path = tmp_path / "dist/v1/plans/au%3Acommunity%3Aexample-variable/index.json"
     assert json.loads(plan_index_path.read_text())["versions"][0]["effective_from"] == "2026-01-01"
+
+    conflicting = to_dict(parse_plan(plan_data))
+    conflicting["supplier"] = {"id": "other-energy", "name": "Other Energy"}
+    conflicting["components"][1]["rate"] = "0.30"
+    conflicting_plan = parse_plan(conflicting)
+    conflicting["id"] = version_id(conflicting_plan)
+    conflict_path = tmp_path / "community/au/other-energy/example-variable.yaml"
+    conflict_path.parent.mkdir(parents=True)
+    conflict_path.write_text(yaml.safe_dump(conflicting), encoding="utf-8")
+    with pytest.raises(ValueError, match="Community plan IDs must be unique"):
+        build(LocalArchiveStore(tmp_path / "archive"), tmp_path / "dist")
 
 
 def test_upload_sets_cache_headers_and_uploads_versions_before_indexes(tmp_path: Path) -> None:

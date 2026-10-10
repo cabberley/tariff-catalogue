@@ -4,7 +4,7 @@ from pathlib import Path
 import httpx
 import respx
 import yaml
-from tariff_core import to_dict
+from tariff_core import parse_plan, to_dict, version_id
 
 from tariff_catalogue.community_tools import intake
 from tariff_catalogue.community_tools.intake import (
@@ -168,6 +168,55 @@ def test_issue_rejection_comment_does_not_echo_nmi(tmp_path: Path, monkeypatch) 
     assert "4102000000" not in comment
 
 
+def test_retry_reuses_an_existing_submission_branch(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.delenv("CATALOGUE_BASE_URL", raising=False)
+    monkeypatch.delenv("R2_BUCKET", raising=False)
+    body = _issue_body(_submission().plan_yaml)
+    result = validate_submission(parse_issue_body(body), tmp_path)
+    assert result.plan is not None
+    destination = tmp_path / result.file_path
+    plan_content = yaml.safe_dump(to_dict(result.plan), sort_keys=False, allow_unicode=True)
+    event_path = tmp_path / "event.json"
+    event_path.write_text(
+        json.dumps(
+            {
+                "issue": {
+                    "number": 10,
+                    "html_url": ISSUE_URL,
+                    "title": "[Plan submission]: Example Variable",
+                    "body": body,
+                    "labels": [{"name": "plan-submission"}],
+                },
+                "action": "labeled",
+                "repository": {"full_name": "cabberley/tariff-catalogue"},
+            }
+        ),
+        encoding="utf-8",
+    )
+    calls = []
+
+    def run(arguments, root):
+        calls.append(arguments)
+        if arguments[:3] == ["gh", "pr", "list"]:
+            return ""
+        if arguments[:2] == ["git", "ls-remote"]:
+            return "commit refs/heads/community/issue-10"
+        if arguments[:4] == ["git", "checkout", "-b", "community/issue-10"]:
+            destination.parent.mkdir(parents=True)
+            destination.write_text(plan_content, encoding="utf-8")
+        if arguments[:3] == ["gh", "pr", "create"]:
+            return "https://github.com/cabberley/tariff-catalogue/pull/11"
+        return ""
+
+    monkeypatch.setattr(intake, "_run", run)
+
+    assert intake._process_event(tmp_path, event_path, "main") == 0
+
+    assert ["git", "fetch", "origin", "community/issue-10"] in calls
+    assert ["git", "push", "--set-upstream", "origin", "community/issue-10"] not in calls
+    assert ["gh", "pr", "create"] == calls[-2][:3]
+
+
 def test_personal_data_scanner_recognizes_supported_identifier_patterns() -> None:
     examples = (
         "NMI: QL123456789",
@@ -234,6 +283,43 @@ def test_duplicate_pricing_is_reported_instead_of_becoming_a_pr(tmp_path: Path) 
     assert "https://example.com/matching-plan" in comment
 
 
+def test_same_numeric_rates_in_another_currency_are_not_duplicates(tmp_path: Path) -> None:
+    result = validate_submission(_submission(), tmp_path)
+    assert result.plan is not None
+    other_market = to_dict(result.plan)
+    other_market["plan_id"] = "au:community:other-plan"
+    other_market["display_name"] = "Other Plan"
+    other_market["currency"] = "GBP"
+    existing = parse_plan(other_market)
+    other_market["id"] = version_id(existing)
+    existing_path = tmp_path / "community" / "au" / "example-energy" / "other-plan.yaml"
+    existing_path.parent.mkdir(parents=True)
+    existing_path.write_text(yaml.safe_dump(other_market), encoding="utf-8")
+
+    duplicate = validate_submission(_submission(), tmp_path)
+
+    assert duplicate.duplicate_path is None
+    assert duplicate.id_conflict_path is None
+
+
+def test_plan_id_collision_with_different_pricing_is_rejected(tmp_path: Path) -> None:
+    result = validate_submission(_submission(), tmp_path)
+    assert result.plan is not None
+    conflicting = to_dict(result.plan)
+    conflicting["supplier"] = {"id": "other-energy", "name": "Other Energy"}
+    conflicting["components"][1]["rate"] = "0.30"
+    parsed_conflict = parse_plan(conflicting)
+    conflicting["id"] = version_id(parsed_conflict)
+    conflict_path = tmp_path / "community" / "au" / "other-energy" / "example-variable.yaml"
+    conflict_path.parent.mkdir(parents=True)
+    conflict_path.write_text(yaml.safe_dump(conflicting), encoding="utf-8")
+
+    submission = validate_submission(_submission(), tmp_path)
+
+    assert submission.duplicate_path is None
+    assert submission.id_conflict_path == Path("community/au/other-energy/example-variable.yaml")
+
+
 def test_published_official_duplicate_uses_the_equivalence_group(
     monkeypatch,
 ) -> None:
@@ -251,8 +337,55 @@ def test_published_official_duplicate_uses_the_equivalence_group(
         router.get("/v1/au/global/index.json").mock(
             return_value=httpx.Response(
                 200,
-                json={"plans": [{"plan_id": "au:cdr:official-plan", "equivalence_group": group}]},
+                json={
+                    "plans": [
+                        {
+                            "plan_id": "au:cdr:official-plan",
+                            "equivalence_group": group,
+                            "commodity": "electricity",
+                            "currency": "AUD",
+                        }
+                    ]
+                },
             )
+        )
+
+        duplicate = find_published_duplicate(plan)
+
+    assert duplicate == "https://catalogue.example/v1/plans/au%3Acdr%3Aofficial-plan/index.json"
+
+
+def test_published_duplicate_checks_currency_in_plan_details_for_old_indexes(
+    monkeypatch,
+) -> None:
+    monkeypatch.delenv("CATALOGUE_BASE_URL", raising=False)
+    monkeypatch.delenv("R2_BUCKET", raising=False)
+    plan = validate_submission(_submission(), Path.cwd()).plan
+    assert plan is not None
+    monkeypatch.setenv("CATALOGUE_BASE_URL", "https://catalogue.example")
+    group = _pricing_hash(plan)
+
+    with respx.mock(base_url="https://catalogue.example") as router:
+        router.get("/v1/au/index.json").mock(
+            return_value=httpx.Response(200, json={"regions": [{"region": "global"}]})
+        )
+        router.get("/v1/au/global/index.json").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "plans": [
+                        {
+                            "plan_id": "au:cdr:official-plan",
+                            "latest_version": "version-hash",
+                            "equivalence_group": group,
+                            "commodity": "electricity",
+                        }
+                    ]
+                },
+            )
+        )
+        router.get("/v1/plans/au%3Acdr%3Aofficial-plan/version-hash.json").mock(
+            return_value=httpx.Response(200, json={"currency": "AUD"})
         )
 
         duplicate = find_published_duplicate(plan)
@@ -274,4 +407,15 @@ def test_community_pr_validation_checks_id_and_path(tmp_path: Path, monkeypatch)
     plan_data = yaml.safe_load(plan_path.read_text(encoding="utf-8"))
     plan_data["plan_id"] = "gb:community:wrong-plan"
     plan_path.write_text(yaml.safe_dump(plan_data), encoding="utf-8")
+    assert intake._validate_community(tmp_path) == 1
+
+    plan_data = to_dict(result.plan)
+    plan_data["supplier"] = {"id": "other-energy", "name": "Other Energy"}
+    plan_data["components"][1]["rate"] = "0.30"
+    conflicting_plan = parse_plan(plan_data)
+    plan_data["id"] = version_id(conflicting_plan)
+    plan_path.write_text(yaml.safe_dump(to_dict(result.plan)), encoding="utf-8")
+    conflict_path = tmp_path / "community/au/other-energy/example-variable.yaml"
+    conflict_path.parent.mkdir(parents=True)
+    conflict_path.write_text(yaml.safe_dump(plan_data), encoding="utf-8")
     assert intake._validate_community(tmp_path) == 1

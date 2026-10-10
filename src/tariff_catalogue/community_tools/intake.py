@@ -61,6 +61,7 @@ class SubmissionResult:
     plan: PlanVersion | None = None
     file_path: Path | None = None
     duplicate_path: Path | None = None
+    id_conflict_path: Path | None = None
     duplicate_url: str | None = None
     findings: list[CheckFinding] = field(default_factory=list)
 
@@ -130,6 +131,18 @@ def _existing_plan_files(root: Path) -> list[Path]:
     return sorted(set(paths))
 
 
+def _country(plan: PlanVersion) -> str | None:
+    return plan.region.country.casefold() if plan.region and plan.region.country else None
+
+
+def _same_pricing_market(left: PlanVersion, right: PlanVersion) -> bool:
+    return (
+        left.commodity == right.commodity
+        and left.currency == right.currency
+        and _country(left) == _country(right)
+    )
+
+
 def find_duplicate(plan: PlanVersion, root: Path, exclude: Path | None = None) -> Path | None:
     """Find a plan with identical pricing in checked-in or built catalogue data."""
     target_hash = _pricing_hash(plan)
@@ -142,7 +155,24 @@ def find_duplicate(plan: PlanVersion, root: Path, exclude: Path | None = None) -
             if not isinstance(value, dict):
                 continue
             existing = parse_plan(value)
-            if _pricing_hash(existing) == target_hash:
+            if _pricing_hash(existing) == target_hash and _same_pricing_market(plan, existing):
+                return path.relative_to(root)
+        except Exception:
+            continue
+    return None
+
+
+def find_plan_id_conflict(plan_id: str, root: Path, exclude: Path | None = None) -> Path | None:
+    """Find an existing plan with this ID even when its pricing differs."""
+    for path in _existing_plan_files(root):
+        if exclude is not None and path.resolve() == exclude.resolve():
+            continue
+        try:
+            raw = path.read_text(encoding="utf-8")
+            value = json.loads(raw) if path.suffix == ".json" else yaml.safe_load(raw)
+            if not isinstance(value, dict):
+                continue
+            if parse_plan(value).plan_id == plan_id:
                 return path.relative_to(root)
         except Exception:
             continue
@@ -195,7 +225,25 @@ def find_published_duplicate(plan: PlanVersion) -> str | None:
                     isinstance(summary, dict)
                     and summary.get("equivalence_group") == target_hash
                     and isinstance(summary.get("plan_id"), str)
+                    and summary.get("commodity") == plan.commodity.value
                 ):
+                    currency = summary.get("currency")
+                    if currency is None:
+                        version_hash = summary.get("latest_version") or summary.get("version_hash")
+                        if not isinstance(version_hash, str):
+                            continue
+                        version_url = (
+                            f"{base_url}/v1/plans/{quote(summary['plan_id'], safe='')}/"
+                            f"{quote(version_hash, safe='')}.json"
+                        )
+                        version_response = client.get(version_url)
+                        version_response.raise_for_status()
+                        version_data = version_response.json()
+                        if not isinstance(version_data, dict):
+                            raise ValueError("Invalid published plan version")
+                        currency = version_data.get("currency")
+                    if currency != plan.currency:
+                        continue
                     encoded_plan_id = quote(summary["plan_id"], safe="")
                     return f"{base_url}/v1/plans/{encoded_plan_id}/index.json"
     return None
@@ -301,7 +349,9 @@ def validate_submission(submission: Submission, root: Path) -> SubmissionResult:
     result.file_path = _plan_path(country, supplier_slug, submission.plan_name)
     result.findings = _synthetic_findings(plan)
     result.duplicate_path = find_duplicate(plan, root, result.file_path)
-    if result.duplicate_path is None:
+    if result.duplicate_path is None and plan.plan_id is not None:
+        result.id_conflict_path = find_plan_id_conflict(plan.plan_id, root, result.file_path)
+    if result.duplicate_path is None and result.id_conflict_path is None:
         try:
             result.duplicate_url = find_published_duplicate(plan)
         except (httpx.HTTPError, ValueError):
@@ -331,11 +381,21 @@ def build_pr_body(issue_url: str, findings: list[CheckFinding]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def _issue_comment(errors: list[str], *, duplicate_url: str | None = None) -> str:
+def _issue_comment(
+    errors: list[str],
+    *,
+    duplicate_url: str | None = None,
+    conflict_url: str | None = None,
+) -> str:
     if duplicate_url is not None:
         return (
             "This plan has the same pricing as an existing catalogue plan. "
             f"[View the matching plan]({duplicate_url})."
+        )
+    if conflict_url is not None:
+        return (
+            "The generated plan ID is already used by a different catalogue plan. "
+            f"[View the existing plan]({conflict_url}) and submit a plan with a distinct name."
         )
     if errors:
         return "The submission was not converted into a PR:\n\n" + "\n".join(
@@ -355,6 +415,19 @@ def _pr_comment(pr_url: str, findings: list[CheckFinding]) -> str:
     else:
         lines.append("- No findings.")
     return "\n".join(lines)
+
+
+def _plan_link(repository: str, branch: str, path: Path, root: Path) -> str:
+    if path.parts[:2] == ("dist", "v1"):
+        try:
+            value = json.loads((root / path).read_text(encoding="utf-8"))
+            plan_id = value.get("plan_id") if isinstance(value, dict) else None
+            base_url = _catalogue_base_url()
+            if isinstance(plan_id, str) and base_url:
+                return f"{base_url}/v1/plans/{quote(plan_id, safe='')}/index.json"
+        except (OSError, UnicodeError, ValueError):
+            pass
+    return f"https://github.com/{repository}/blob/{branch}/{path.as_posix()}"
 
 
 def _run(arguments: list[str], root: Path) -> str:
@@ -387,10 +460,12 @@ def _process_event(root: Path, event_path: Path, base_branch: str) -> int:
         _run([*gh, _issue_comment(result.errors)], root)
         return 0
     if result.duplicate_path is not None:
-        duplicate_url = (
-            f"https://github.com/{repository}/blob/{base_branch}/{result.duplicate_path.as_posix()}"
-        )
+        duplicate_url = _plan_link(repository, base_branch, result.duplicate_path, root)
         _run([*gh, _issue_comment([], duplicate_url=duplicate_url)], root)
+        return 0
+    if result.id_conflict_path is not None:
+        conflict_url = _plan_link(repository, base_branch, result.id_conflict_path, root)
+        _run([*gh, _issue_comment([], conflict_url=conflict_url)], root)
         return 0
     if result.duplicate_url is not None:
         _run([*gh, _issue_comment([], duplicate_url=result.duplicate_url)], root)
@@ -426,23 +501,51 @@ def _process_event(root: Path, event_path: Path, base_branch: str) -> int:
         return 0
 
     destination = root / result.file_path
-    if destination.exists():
-        _run([*gh, _issue_comment(["A plan already exists at the generated path."])], root)
-        return 0
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    destination.write_text(
-        yaml.safe_dump(to_dict(result.plan), sort_keys=False, allow_unicode=True),
-        encoding="utf-8",
-    )
-    _run(["git", "checkout", "-b", branch], root)
-    _run(["git", "add", "--", result.file_path.as_posix()], root)
-    _run(["git", "config", "user.name", "github-actions[bot]"], root)
-    _run(
-        ["git", "config", "user.email", "41898282+github-actions[bot]@users.noreply.github.com"],
-        root,
-    )
-    _run(["git", "commit", "-m", "Add community plan submission"], root)
-    _run(["git", "push", "--set-upstream", "origin", branch], root)
+    plan_content = yaml.safe_dump(to_dict(result.plan), sort_keys=False, allow_unicode=True)
+    remote_branch = _run(["git", "ls-remote", "--heads", "origin", branch], root)
+    if remote_branch:
+        _run(["git", "fetch", "origin", branch], root)
+        _run(["git", "checkout", "-b", branch, "FETCH_HEAD"], root)
+        if not destination.is_file() or destination.read_text(encoding="utf-8") != plan_content:
+            _run(
+                [
+                    *gh,
+                    "A previous submission branch has different content; a maintainer must "
+                    "reconcile it before another PR can be opened.",
+                ],
+                root,
+            )
+            return 0
+    else:
+        if destination.exists():
+            _run([*gh, _issue_comment(["A plan already exists at the generated path."])], root)
+            return 0
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_text(plan_content, encoding="utf-8")
+        if _validate_community(root, [destination], check_published=False):
+            destination.unlink()
+            _run(
+                [
+                    *gh,
+                    "The generated plan failed the final community checks; no PR was opened.",
+                ],
+                root,
+            )
+            return 0
+        _run(["git", "checkout", "-b", branch], root)
+        _run(["git", "add", "--", result.file_path.as_posix()], root)
+        _run(["git", "config", "user.name", "github-actions[bot]"], root)
+        _run(
+            [
+                "git",
+                "config",
+                "user.email",
+                "41898282+github-actions[bot]@users.noreply.github.com",
+            ],
+            root,
+        )
+        _run(["git", "commit", "-m", "Add community plan submission"], root)
+        _run(["git", "push", "--set-upstream", "origin", branch], root)
     pr_url = _run(
         [
             "gh",
@@ -471,11 +574,18 @@ def _process_event(root: Path, event_path: Path, base_branch: str) -> int:
     return 0
 
 
-def _validate_community(root: Path) -> int:
+def _validate_community(
+    root: Path,
+    paths: list[Path] | None = None,
+    *,
+    check_published: bool = True,
+) -> int:
     failed = False
-    for path in sorted(
-        [*root.joinpath("community").rglob("*.yaml"), *root.joinpath("community").rglob("*.yml")]
-    ):
+    community_files = paths or [
+        *root.joinpath("community").rglob("*.yaml"),
+        *root.joinpath("community").rglob("*.yml"),
+    ]
+    for path in sorted(community_files):
         raw = path.read_text(encoding="utf-8")
         if scan_personal_data(raw):
             print(f"{path.relative_to(root)}: personal information detected.")
@@ -527,15 +637,22 @@ def _validate_community(root: Path) -> int:
             print(f"{path.relative_to(root)}: duplicate pricing found in {duplicate}.")
             failed = True
             continue
-        try:
-            published_duplicate = find_published_duplicate(plan)
-        except (httpx.HTTPError, ValueError):
-            print(f"{path.relative_to(root)}: published catalogue duplicate check failed.")
+        if plan.plan_id is not None and find_plan_id_conflict(plan.plan_id, root, path):
+            print(f"{path.relative_to(root)}: plan ID is already used by another plan.")
             failed = True
             continue
-        if published_duplicate is not None:
-            print(f"{path.relative_to(root)}: duplicate pricing found in the published catalogue.")
-            failed = True
+        if check_published:
+            try:
+                published_duplicate = find_published_duplicate(plan)
+            except (httpx.HTTPError, ValueError):
+                print(f"{path.relative_to(root)}: published catalogue duplicate check failed.")
+                failed = True
+                continue
+            if published_duplicate is not None:
+                print(
+                    f"{path.relative_to(root)}: duplicate pricing found in the published catalogue."
+                )
+                failed = True
     return int(failed)
 
 

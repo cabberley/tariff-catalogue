@@ -130,6 +130,8 @@ def _add_community_plans(
             continue
 
         plan_id = plan.plan_id
+        if plan_id in published_versions:
+            raise ValueError("Community plan IDs must be unique.")
         version_hash = content_hash(plan)
         plan_data = to_dict(plan)
         version_bytes = _json_bytes(plan_data)
@@ -142,6 +144,7 @@ def _add_community_plans(
             "supplier": plan_data.get("supplier"),
             "commodity": plan.commodity.value,
             "customer_type": plan.customer_type.value,
+            "currency": plan.currency,
             "pricing_model": plan.pricing_model.value,
             "latest_version": version_hash,
             "version_hash": version_hash,
@@ -209,6 +212,7 @@ def build(store: ArchiveStore, out_dir: Path) -> BuildReport:
             "supplier": entry.get("supplier", latest_data.get("supplier")),
             "commodity": commodity,
             "customer_type": customer_type,
+            "currency": latest_data.get("currency"),
             "pricing_model": latest_data.get("pricing_model"),
             "latest_version": latest_hash,
             "version_hash": latest_hash,
