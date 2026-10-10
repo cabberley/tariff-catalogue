@@ -1,0 +1,139 @@
+name: Harvest AU CDR
+
+on:
+  schedule:
+    - cron: "23 17 * * *"
+  workflow_dispatch:
+    inputs:
+      brand:
+        description: "Optional CDR brand ID to harvest"
+        required: false
+        type: string
+      full:
+        description: "Run a full listing for withdrawn-plan detection"
+        required: false
+        default: false
+        type: boolean
+      dry_run:
+        description: "Do not write to R2 or publish"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: harvest-au-cdr
+  cancel-in-progress: false
+
+jobs:
+  harvest-and-publish:
+    runs-on: ubuntu-latest
+    env:
+      R2_BUCKET: ${{ secrets.R2_BUCKET }}
+      R2_ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
+      R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      CATALOGUE_BASE_URL: ${{ vars.CATALOGUE_BASE_URL }}
+      BRAND: ${{ inputs.brand }}
+      FULL: ${{ inputs.full }}
+      DRY_RUN: ${{ inputs.dry_run }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - run: python -m pip install -e .
+
+      - name: Harvest Australian CDR
+        id: harvest
+        run: |
+          args=(harvest au-cdr --report harvest-report.json)
+          if [[ -n "$BRAND" ]]; then
+            args+=(--brand "$BRAND")
+          fi
+          if [[ "$GITHUB_EVENT_NAME" == "schedule" ]]; then
+            if [[ "$(date -u +%u)" == "7" ]]; then
+              args+=(--full)
+            fi
+          elif [[ "$FULL" == "true" ]]; then
+            args+=(--full)
+          fi
+          if [[ "$DRY_RUN" == "true" ]]; then
+            args+=(--dry-run)
+          fi
+          tariff-catalogue "${args[@]}"
+
+      - name: Check harvest report
+        id: report
+        if: always()
+        run: PYTHONPATH=src python -m tariff_catalogue.review.issues check --report harvest-report.json
+
+      - name: Publish catalogue
+        if: steps.harvest.outcome == 'success' && steps.report.outcome == 'success'
+        run: |
+          args=(publish --out dist)
+          if [[ "$DRY_RUN" == "true" ]]; then
+            args+=(--dry-run)
+          fi
+          tariff-catalogue "${args[@]}"
+
+      - name: Upload harvest report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: harvest-report-${{ github.run_number }}
+          path: harvest-report.json
+          if-no-files-found: ignore
+
+      - name: Update findings digest
+        if: always() && steps.report.outputs.has_findings == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          catalogue_url="$CATALOGUE_BASE_URL"
+          if [[ -z "$catalogue_url" ]]; then
+            catalogue_url="https://${R2_BUCKET}.r2.dev"
+          fi
+          PYTHONPATH=src python -m tariff_catalogue.review.issues findings \
+            --report harvest-report.json \
+            --output issue-body.md \
+            --run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+            --catalogue-url "$catalogue_url"
+          issue_number="$(gh issue list --state open --search '"Data review: au-cdr" in:title' --json number --jq '.[0].number // empty')"
+          if [[ -n "$issue_number" ]]; then
+            gh issue comment "$issue_number" --body-file issue-body.md
+          else
+            gh issue create --title "Data review: au-cdr" --body-file issue-body.md
+          fi
+
+      - name: Close resolved harvest failure
+        if: success() && steps.report.outputs.fully_successful == 'true' && env.DRY_RUN != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          issue_number="$(gh issue list --state open --search '"Harvest failure: au-cdr" in:title' --json number --jq '.[0].number // empty')"
+          if [[ -n "$issue_number" ]]; then
+            gh issue close "$issue_number" --reason completed
+          fi
+
+      - name: Open or update harvest failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PYTHONPATH=src python -m tariff_catalogue.review.issues failure \
+            --report harvest-report.json \
+            --output issue-body.md \
+            --run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          issue_number="$(gh issue list --state open --search '"Harvest failure: au-cdr" in:title' --json number --jq '.[0].number // empty')"
+          if [[ -n "$issue_number" ]]; then
+            gh issue comment "$issue_number" --body-file issue-body.md
+          else
+            gh issue create --title "Harvest failure: au-cdr" --body-file issue-body.md
+          fi
