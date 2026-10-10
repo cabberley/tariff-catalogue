@@ -66,7 +66,10 @@ def _tree(root: Path) -> dict[str, bytes]:
     }
 
 
-def test_build_is_deterministic_and_keeps_withdrawn_versions_reachable(tmp_path: Path) -> None:
+def test_build_is_deterministic_and_keeps_withdrawn_versions_reachable(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
     store, plan_id, version_hash = _fixture_archive(tmp_path / "archive")
     output = tmp_path / "dist"
     report = build(store, output)

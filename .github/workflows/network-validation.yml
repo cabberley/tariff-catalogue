@@ -1,0 +1,57 @@
+name: Network tariff validation
+
+on:
+  pull_request:
+    paths:
+      - "network/**"
+      - "src/tariff_catalogue/review/network_validation.py"
+      - "src/tariff_catalogue/review/diff_report.py"
+      - ".github/workflows/network-validation.yml"
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - run: python -m pip install -e .
+      - name: Validate curated network tariffs
+        run: PYTHONPATH=src python -m tariff_catalogue.review.network_validation
+      - name: Comment rate diff
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASE_REF: ${{ github.base_ref }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          git fetch origin "$BASE_REF"
+          : > /tmp/network-diff-report.md
+          while IFS= read -r file; do
+            [[ "$file" == *.yaml || "$file" == *.yml ]] || continue
+            old_file="$(mktemp)"
+            new_file="$(mktemp)"
+            report_file="$(mktemp)"
+            if git cat-file -e "origin/$BASE_REF:$file" 2>/dev/null; then
+              git show "origin/$BASE_REF:$file" > "$old_file"
+            else
+              printf '{}\n' > "$old_file"
+            fi
+            cp "$file" "$new_file"
+            printf '\n### %s\n\n' "$file" >> /tmp/network-diff-report.md
+            PYTHONPATH=src python -m tariff_catalogue.review.diff_report \
+              "$old_file" "$new_file" --output "$report_file"
+            cat "$report_file" >> /tmp/network-diff-report.md
+            rm -f "$old_file" "$new_file" "$report_file"
+          done < <(git diff --name-only "origin/$BASE_REF...HEAD" -- network/)
+          if [[ -s /tmp/network-diff-report.md ]]; then
+            gh pr comment "$PR_NUMBER" --body-file /tmp/network-diff-report.md
+          fi
