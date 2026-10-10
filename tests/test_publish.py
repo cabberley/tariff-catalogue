@@ -4,8 +4,9 @@ from pathlib import Path
 from urllib.parse import quote
 
 import boto3
+import yaml
 from moto import mock_aws
-from tariff_core import content_hash, from_cdr, to_dict
+from tariff_core import content_hash, from_cdr, parse_plan, to_dict, version_id
 
 from tariff_catalogue.harvest.common.archive import LocalArchiveStore, S3ArchiveStore
 from tariff_catalogue.publish.build import build
@@ -123,6 +124,55 @@ def test_build_applies_index_confidence_without_rewriting_archived_version(
     published_path = output / "v1" / "plans" / quote(plan_id, safe="") / f"{version_hash}.json"
     assert json.loads(published_path.read_text())["confidence"] == "medium"
     assert store.get(archived_path) == archived_bytes
+
+
+def test_build_publishes_community_plans_by_country_and_region(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    plan = parse_plan(
+        {
+            "plan_id": "au:community:example-variable",
+            "kind": "retail",
+            "display_name": "Example Variable",
+            "supplier": {"id": "example-energy", "name": "Example Energy"},
+            "commodity": "electricity",
+            "customer_type": "residential",
+            "region": {"country": "AU"},
+            "currency": "AUD",
+            "timezone": "Australia/Brisbane",
+            "time_basis": "local",
+            "effective": {"from": "2026-01-01", "to": None},
+            "pricing_model": "bundled",
+            "source": {"type": "community"},
+            "confidence": "unverified",
+            "components": [
+                {"kind": "fixed", "label": "supply", "unit": "per_day", "rate": "1"},
+                {
+                    "kind": "usage",
+                    "direction": "import",
+                    "register": "general",
+                    "quantity_unit": "kWh",
+                    "rate": "0.20",
+                },
+            ],
+        }
+    )
+    plan_data = to_dict(plan)
+    plan_data["id"] = version_id(plan)
+    community_path = tmp_path / "community" / "au" / "example-energy" / "example-variable.yaml"
+    community_path.parent.mkdir(parents=True)
+    community_path.write_text(yaml.safe_dump(plan_data), encoding="utf-8")
+
+    report = build(LocalArchiveStore(tmp_path / "archive"), tmp_path / "dist")
+
+    assert report.plans == 1
+    assert report.versions == 1
+    country_index = json.loads((tmp_path / "dist/v1/au/index.json").read_text())
+    assert country_index["regions"][0]["region"] == "global"
+    region_index = json.loads((tmp_path / "dist/v1/au/global/index.json").read_text())
+    assert region_index["plans"][0]["plan_id"] == "au:community:example-variable"
+    assert region_index["plans"][0]["confidence"] == "unverified"
+    plan_index_path = tmp_path / "dist/v1/plans/au%3Acommunity%3Aexample-variable/index.json"
+    assert json.loads(plan_index_path.read_text())["versions"][0]["effective_from"] == "2026-01-01"
 
 
 def test_upload_sets_cache_headers_and_uploads_versions_before_indexes(tmp_path: Path) -> None:

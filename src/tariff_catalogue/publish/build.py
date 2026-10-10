@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.metadata
 import json
+import re
 import shutil
 from collections import Counter, defaultdict
 from dataclasses import dataclass
@@ -12,8 +13,11 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 from urllib.parse import quote, unquote
 
-from tariff_core import parse_plan, validate_plan
+import yaml
+from tariff_core import content_hash, parse_plan, to_dict, validate_plan, version_id
 
+from tariff_catalogue.checks.synthetic import check_version
+from tariff_catalogue.harvest.au_cdr.run import _pricing_hash
 from tariff_catalogue.harvest.common.archive import ArchiveStore
 
 
@@ -88,6 +92,78 @@ def _plan_entries(store: ArchiveStore) -> dict[str, dict[str, Any]]:
             if isinstance(item, dict) and isinstance(item.get("plan_id"), str):
                 entries[item["plan_id"]] = item
     return entries
+
+
+def _add_community_plans(
+    published: list[dict[str, Any]],
+    published_versions: dict[str, list[dict[str, Any]]],
+    copied_versions: list[tuple[str, str, bytes]],
+) -> None:
+    root = Path("community")
+    for path in sorted([*root.rglob("*.yaml"), *root.rglob("*.yml")]):
+        try:
+            data = yaml.safe_load(path.read_text(encoding="utf-8"))
+            if not isinstance(data, dict) or not _valid_plan(data):
+                continue
+            plan = parse_plan(data)
+        except (OSError, UnicodeError, ValueError, TypeError, yaml.YAMLError):
+            continue
+        if (
+            plan.plan_id is None
+            or not re.fullmatch(r"[a-z]{2}:community:[a-z0-9]+(?:-[a-z0-9]+)*", plan.plan_id)
+            or plan.region is None
+            or plan.region.country is None
+            or plan.plan_id.split(":", maxsplit=1)[0] != plan.region.country.casefold()
+            or plan.supplier is None
+            or plan.display_name is None
+            or plan.source is None
+            or plan.source.type is None
+            or plan.source.type.value != "community"
+            or plan.confidence is None
+            or plan.confidence.value != "unverified"
+        ):
+            continue
+        try:
+            if plan.id != version_id(plan):
+                continue
+        except ValueError:
+            continue
+
+        plan_id = plan.plan_id
+        version_hash = content_hash(plan)
+        plan_data = to_dict(plan)
+        version_bytes = _json_bytes(plan_data)
+        effective = plan_data.get("effective", {})
+        source = plan_data.get("source", {})
+        findings = check_version(plan)
+        summary = {
+            "plan_id": plan_id,
+            "display_name": plan.display_name,
+            "supplier": plan_data.get("supplier"),
+            "commodity": plan.commodity.value,
+            "customer_type": plan.customer_type.value,
+            "pricing_model": plan.pricing_model.value,
+            "latest_version": version_hash,
+            "version_hash": version_hash,
+            "status": "current",
+            "partial": plan.partial,
+            "confidence": plan.confidence.value,
+            "equivalence_group": _pricing_hash(plan),
+            "finding_codes": sorted({finding.code for finding in findings}),
+            "equivalent_count": 1,
+            "_country": plan.region.country.casefold(),
+            "_region": (plan.region.network or "global").casefold(),
+        }
+        published.append(summary)
+        published_versions[plan_id] = [
+            {
+                "version_hash": version_hash,
+                "effective_from": effective.get("from") if isinstance(effective, dict) else None,
+                "effective_to": effective.get("to") if isinstance(effective, dict) else None,
+                "first_seen": source.get("retrieved_at") if isinstance(source, dict) else None,
+            }
+        ]
+        copied_versions.append((plan_id, version_hash, version_bytes))
 
 
 def build(store: ArchiveStore, out_dir: Path) -> BuildReport:
@@ -181,6 +257,8 @@ def build(store: ArchiveStore, out_dir: Path) -> BuildReport:
             if version["effective_to"] is None:
                 version["effective_to"] = plan_versions[index + 1]["effective_from"]
         published_versions[plan_id] = plan_versions
+
+    _add_community_plans(published, published_versions, copied_versions)
 
     equivalence_counts = Counter(
         plan["equivalence_group"]
