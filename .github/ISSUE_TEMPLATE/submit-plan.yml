@@ -1,0 +1,68 @@
+name: Submit a plan
+description: Suggest a tariff plan for human review
+title: "[Plan submission]: "
+labels:
+  - plan-submission
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Share plan data only. Do not include meter identifiers, addresses, email
+        addresses, phone numbers, bills, or other household information.
+  - type: input
+    id: country
+    attributes:
+      label: Country
+      description: Two-letter country code (for example, au or gb).
+      placeholder: au
+    validations:
+      required: true
+  - type: input
+    id: supplier
+    attributes:
+      label: Supplier
+      placeholder: Example Energy
+    validations:
+      required: true
+  - type: input
+    id: plan_name
+    attributes:
+      label: Plan name
+      placeholder: Example Variable
+    validations:
+      required: true
+  - type: dropdown
+    id: commodity
+    attributes:
+      label: Commodity
+      options:
+        - electricity
+        - gas
+        - water
+    validations:
+      required: true
+  - type: input
+    id: source_link
+    attributes:
+      label: Source link
+      description: Public link to the plan or price list, if available.
+      placeholder: https://example.com/plan
+    validations:
+      required: false
+  - type: checkboxes
+    id: from_my_bill
+    attributes:
+      label: Source
+      options:
+        - label: This plan is from my bill (no public source link)
+          required: false
+  - type: textarea
+    id: plan
+    attributes:
+      label: Plan YAML
+      description: |
+        Paste the plan's tariff-core YAML. Include the pricing components,
+        effective date, currency, timezone, and region where known.
+      render: yaml
+    validations:
+      required: true
