@@ -43,7 +43,7 @@ def test_discover_brands_follows_pagination_and_skips_inactive() -> None:
             brands = discover_brands(client, report)
 
     assert route.call_count == 2
-    assert all(call.request.headers["x-v"] == "1" for call in route.calls)
+    assert all(call.request.headers["x-v"] == "2" for call in route.calls)
     assert [brand.brand_id for brand in brands] == ["origin", "retailer-two", "another-brand"]
     assert brands[0].product_base_uri == ORIGIN_BASE
     assert brands[0].product_base_uri_field == "productBaseUri"
@@ -51,6 +51,38 @@ def test_discover_brands_follows_pagination_and_skips_inactive() -> None:
     assert report.warnings == [
         "Skipping inactive CDR brand inactive (Inactive Retailer; status: REMOVED)"
     ]
+
+
+def test_discover_brands_accepts_v2_summary_array() -> None:
+    with respx.mock:
+        route = respx.get(BRANDS_URL).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "data": [
+                        {
+                            "dataHolderBrandId": "origin",
+                            "brandName": "Origin Energy",
+                            "productBaseUri": ORIGIN_BASE,
+                        },
+                        {
+                            "interimId": "new-retailer",
+                            "brandName": "New Retailer",
+                            "publicBaseUri": "https://api.new-retailer.example",
+                        },
+                    ],
+                    "links": {"self": BRANDS_URL},
+                    "meta": {},
+                },
+            )
+        )
+        with PoliteClient(min_interval=0) as client:
+            brands = discover_brands(client)
+
+    assert route.calls[0].request.headers["x-v"] == "2"
+    assert [brand.brand_id for brand in brands] == ["origin", "new-retailer"]
+    assert brands[0].product_base_uri == ORIGIN_BASE
+    assert brands[1].product_base_uri_field == "publicBaseUri"
 
 
 def test_listing_archives_all_pages_and_reads_all_current_ids(tmp_path: Path) -> None:
