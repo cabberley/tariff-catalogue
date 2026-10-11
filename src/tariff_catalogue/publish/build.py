@@ -270,7 +270,7 @@ def _add_formula_plans(
         plan_data["id"] = version_id(plan)
         version_bytes = _json_bytes(plan_data)
         region = plan_data.get("region", {})
-        summary = {
+        summary: dict[str, Any] = {
             "plan_id": plan_id,
             "display_name": plan.display_name,
             "supplier": plan_data.get("supplier"),
