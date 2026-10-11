@@ -71,4 +71,4 @@ def test_publish_cli_builds_locally_in_dry_run(
 
     assert json.loads((output / "v1" / "index.json").read_text())["schema_version"] == "v1"
     assert (output / "v1/au/network/ergon/2026-27/east/RTOUE.json").is_file()
-    assert "Built 1 plans" in capsys.readouterr().out
+    assert "Built 3 plans (3 versions)" in capsys.readouterr().out
