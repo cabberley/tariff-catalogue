@@ -19,6 +19,7 @@ from tariff_core import content_hash, parse_plan, to_dict, validate_plan, versio
 from tariff_catalogue.checks.synthetic import check_version
 from tariff_catalogue.harvest.au_cdr.run import _pricing_hash
 from tariff_catalogue.harvest.common.archive import ArchiveStore
+from tariff_catalogue.review.formula_validation import load_formula_file
 from tariff_catalogue.review.network_validation import validate_network_file
 
 
@@ -250,6 +251,85 @@ def _add_network_plans(
     return network_files
 
 
+def _add_formula_plans(
+    published: list[dict[str, Any]],
+    published_versions: dict[str, list[dict[str, Any]]],
+    copied_versions: list[tuple[str, str, bytes]],
+) -> list[tuple[str, bytes]]:
+    formula_indexes: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    root = Path("formula")
+    for path in sorted([*root.rglob("*.yaml"), *root.rglob("*.yml")]):
+        plan, template = load_formula_file(path, root)
+        plan_id = plan.plan_id
+        if plan_id is None:
+            raise ValueError(f"{path}: plan_id is required")
+        if plan_id in published_versions:
+            raise ValueError(f"{path}: duplicate plan_id {plan_id}")
+        version_hash = content_hash(plan)
+        plan_data = to_dict(plan)
+        plan_data["id"] = version_id(plan)
+        version_bytes = _json_bytes(plan_data)
+        region = plan_data.get("region", {})
+        summary = {
+            "plan_id": plan_id,
+            "display_name": plan.display_name,
+            "supplier": plan_data.get("supplier"),
+            "commodity": plan.commodity.value,
+            "customer_type": plan.customer_type.value,
+            "currency": plan.currency,
+            "pricing_model": plan.pricing_model.value,
+            "latest_version": version_hash,
+            "version_hash": version_hash,
+            "status": "current",
+            "partial": plan.partial,
+            "confidence": plan.confidence.value if plan.confidence else None,
+            "equivalence_group": None,
+            "finding_codes": [],
+            "equivalent_count": 1,
+            "_country": str(region.get("country", "global")).casefold(),
+            "_region": str(region.get("network") or "global").casefold(),
+        }
+        published.append(summary)
+        published_versions[plan_id] = [
+            {
+                "version_hash": version_hash,
+                "effective_from": (
+                    plan_data.get("effective", {}).get("from")
+                    if isinstance(plan_data.get("effective"), dict)
+                    else None
+                ),
+                "effective_to": (
+                    plan_data.get("effective", {}).get("to")
+                    if isinstance(plan_data.get("effective"), dict)
+                    else None
+                ),
+                "first_seen": None,
+            }
+        ]
+        copied_versions.append((plan_id, version_hash, version_bytes))
+        formula_indexes[summary["_country"]].append(
+            {
+                "plan_id": plan_id,
+                "display_name": plan.display_name,
+                "version_hash": version_hash,
+                "template": template,
+            }
+        )
+    return [
+        (
+            f"{country}/formula/index.json",
+            _json_bytes(
+                {
+                    "schema_version": "v1",
+                    "country": country,
+                    "templates": sorted(templates, key=lambda item: item["plan_id"]),
+                }
+            ),
+        )
+        for country, templates in sorted(formula_indexes.items())
+    ]
+
+
 def build(store: ArchiveStore, out_dir: Path) -> BuildReport:
     """Build ``out_dir/v1`` from the archive's current plan indexes and versions."""
     out_dir = Path(out_dir)
@@ -344,6 +424,7 @@ def build(store: ArchiveStore, out_dir: Path) -> BuildReport:
         published_versions[plan_id] = plan_versions
 
     _add_community_plans(published, published_versions, copied_versions)
+    formula_indexes = _add_formula_plans(published, published_versions, copied_versions)
     network_files = _add_network_plans(published, published_versions, copied_versions)
 
     equivalence_counts = Counter(
@@ -381,6 +462,11 @@ def build(store: ArchiveStore, out_dir: Path) -> BuildReport:
         network_path = root / relative_path
         network_path.parent.mkdir(parents=True, exist_ok=True)
         network_path.write_bytes(contents)
+        files += 1
+    for relative_path, contents in formula_indexes:
+        formula_index_path = root / relative_path
+        formula_index_path.parent.mkdir(parents=True, exist_ok=True)
+        formula_index_path.write_bytes(contents)
         files += 1
     for plan_id, versions in sorted(published_versions.items()):
         plan_index_path = root / "plans" / quote(plan_id, safe="") / "index.json"

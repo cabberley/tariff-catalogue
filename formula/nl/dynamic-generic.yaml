@@ -1,0 +1,43 @@
+# Illustrative defaults; check all values against the supplier's published terms.
+plan_id: nl:formula:dynamic-generic
+kind: retail
+display_name: Generic Dutch Dynamic Electricity
+supplier:
+  id: generic-dynamic
+  name: Generic Dynamic Supplier
+commodity: electricity
+customer_type: residential
+region:
+  country: NL
+currency: EUR
+tax:
+  inclusive: true
+  rate: "0.21"
+timezone: Europe/Amsterdam
+time_basis: local
+effective:
+  from: 2026-01-01
+  to: null
+pricing_model: bundled
+components:
+  - kind: usage
+    direction: import
+    register: general
+    quantity_unit: kWh
+    rate:
+      entity: "{price_entity}"
+      multiplier: "1.21"
+      adder: "0"
+      unit_scale: "1"
+source:
+  type: formula
+confidence: unverified
+template:
+  price_entity_hint: Nord Pool integration price sensor for the Netherlands (area NL)
+  expected_unit: EUR/kWh
+  editable_adders:
+    supplier_markup: "0.0"
+    energy_tax: "0.0"
+  notes:
+    - Set the rate adder to the sum of editable_adders.supplier_markup and editable_adders.energy_tax.
+    - Confirm VAT treatment, markup, energy tax, and all rates against the supplier's current published terms.

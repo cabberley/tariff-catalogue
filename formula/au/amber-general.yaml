@@ -1,0 +1,44 @@
+# Illustrative subscription amount; check all values against Amber's published terms.
+plan_id: au:formula:amber-general
+kind: retail
+display_name: Amber General (dynamic)
+supplier:
+  id: amber
+  name: Amber Electric
+commodity: electricity
+customer_type: residential
+region:
+  country: AU
+currency: AUD
+tax:
+  inclusive: true
+  rate: "0.10"
+timezone: Australia/Sydney
+time_basis: local
+effective:
+  from: 2026-01-01
+  to: null
+pricing_model: bundled
+components:
+  - kind: fixed
+    label: subscription
+    unit: per_month
+    rate: "25.00"
+  - kind: usage
+    direction: import
+    register: general
+    quantity_unit: kWh
+    rate:
+      entity: "{price_entity}"
+      multiplier: "1"
+      adder: "0"
+      unit_scale: "1"
+source:
+  type: formula
+confidence: unverified
+template:
+  price_entity_hint: Amber Electric price sensor for your NEM region
+  expected_unit: AUD/kWh
+  notes:
+    - The Amber price sensor already includes network costs and Amber's margin; keep multiplier 1 and adder 0.
+    - Confirm the monthly subscription amount and all rates against Amber's current published terms.
